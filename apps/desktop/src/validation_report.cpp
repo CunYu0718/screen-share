@@ -165,6 +165,9 @@ void ValidationReportRecorder::start(const ValidationRole role,
     samples_.reserve(static_cast<std::size_t>(target_duration_milliseconds /
                                                expected_sample_interval_milliseconds) +
                      16U);
+    latency_samples_milliseconds_.clear();
+    latency_samples_milliseconds_.reserve(120'000U);
+    latency_decode_failures_ = 0;
 }
 
 ValidationRecordResult ValidationReportRecorder::record(const ValidationSampleInput& input) {
@@ -192,6 +195,20 @@ ValidationRecordResult ValidationReportRecorder::record(const ValidationSampleIn
         return {};
     }
     return write_report(sample.elapsed_milliseconds);
+}
+
+void ValidationReportRecorder::record_latency_sample(
+    const std::uint64_t latency_milliseconds) noexcept {
+    if (!active_ || role_ != ValidationRole::Viewer || latency_milliseconds > 10'000U) {
+        return;
+    }
+    latency_samples_milliseconds_.push_back(latency_milliseconds);
+}
+
+void ValidationReportRecorder::record_latency_decode_failure() noexcept {
+    if (active_ && role_ == ValidationRole::Viewer) {
+        ++latency_decode_failures_;
+    }
 }
 
 ValidationRecordResult ValidationReportRecorder::stop_and_write() {
@@ -316,6 +333,25 @@ ValidationRecordResult ValidationReportRecorder::write_report(
                                                environment_.downstream_mbps > 0.0 &&
                                                environment_.rtt_milliseconds >= 0.0 &&
                                                environment_.baseline_packet_loss_ratio >= 0.0;
+    auto ordered_latency_samples = latency_samples_milliseconds_;
+    std::sort(ordered_latency_samples.begin(), ordered_latency_samples.end());
+    const auto latency_percentile = [&ordered_latency_samples](const std::size_t percentile) {
+        if (ordered_latency_samples.empty()) {
+            return std::uint64_t{0};
+        }
+        const auto rank =
+            (ordered_latency_samples.size() * percentile + 99U) / 100U;
+        return ordered_latency_samples[rank - 1U];
+    };
+    const auto latency_p50_milliseconds = latency_percentile(50U);
+    const auto latency_p95_milliseconds = latency_percentile(95U);
+    const auto latency_max_milliseconds = ordered_latency_samples.empty()
+                                              ? std::uint64_t{0}
+                                              : ordered_latency_samples.back();
+    constexpr std::uint64_t minimum_latency_samples =
+        static_cast<std::uint64_t>(target_duration_milliseconds / 1000) * 50U;
+    const bool latency_samples_sufficient =
+        latency_samples_milliseconds_.size() >= minimum_latency_samples;
 
     QJsonObject checks;
     checks.insert(QStringLiteral("duration_30_minutes"),
@@ -334,10 +370,19 @@ ValidationRecordResult ValidationReportRecorder::write_report(
                       average_rates[render_index] >= 55.0);
         checks.insert(QStringLiteral("no_observed_render_gap_over_500_ms"),
                       longest_render_gap_milliseconds <= 500);
+        checks.insert(QStringLiteral("visual_latency_samples_sufficient"),
+                      latency_samples_sufficient);
+        checks.insert(QStringLiteral("visual_latency_p95_at_most_500_ms"),
+                      !ordered_latency_samples.empty() &&
+                          latency_p95_milliseconds <= 500U);
     } else {
         checks.insert(QStringLiteral("average_render_at_least_55_fps"),
                       QJsonValue(QJsonValue::Null));
         checks.insert(QStringLiteral("no_observed_render_gap_over_500_ms"),
+                      QJsonValue(QJsonValue::Null));
+        checks.insert(QStringLiteral("visual_latency_samples_sufficient"),
+                      QJsonValue(QJsonValue::Null));
+        checks.insert(QStringLiteral("visual_latency_p95_at_most_500_ms"),
                       QJsonValue(QJsonValue::Null));
     }
 
@@ -354,6 +399,16 @@ ValidationRecordResult ValidationReportRecorder::write_report(
     summary.insert(QStringLiteral("memory_growth_ratio"), memory_growth_ratio);
     summary.insert(QStringLiteral("longest_observed_render_gap_ms"),
                    longest_render_gap_milliseconds);
+    summary.insert(QStringLiteral("visual_latency_sample_count"),
+                   static_cast<qint64>(latency_samples_milliseconds_.size()));
+    summary.insert(QStringLiteral("visual_latency_decode_failures"),
+                   static_cast<qint64>(latency_decode_failures_));
+    summary.insert(QStringLiteral("visual_latency_p50_ms"),
+                   static_cast<qint64>(latency_p50_milliseconds));
+    summary.insert(QStringLiteral("visual_latency_p95_ms"),
+                   static_cast<qint64>(latency_p95_milliseconds));
+    summary.insert(QStringLiteral("visual_latency_max_ms"),
+                   static_cast<qint64>(latency_max_milliseconds));
     summary.insert(QStringLiteral("automated_checks"), checks);
     summary.insert(QStringLiteral("gate_status"), QStringLiteral("incomplete"));
     summary.insert(QStringLiteral("gate_status_reason"),

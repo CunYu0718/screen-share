@@ -30,6 +30,7 @@ function endpoint(role) {
     },
     summary: {
       average_packet_loss_ratio: 0.002,
+      visual_latency_p95_ms: viewer ? 260 : 0,
       automated_checks: {
         duration_30_minutes: true,
         endpoint_pipeline_metrics_complete: true,
@@ -37,6 +38,8 @@ function endpoint(role) {
         media_active_for_all_samples: true,
         average_render_at_least_55_fps: viewer ? true : null,
         no_observed_render_gap_over_500_ms: viewer ? true : null,
+        visual_latency_samples_sufficient: viewer ? true : null,
+        visual_latency_p95_at_most_500_ms: viewer ? true : null,
       },
     },
     samples: [
@@ -92,6 +95,14 @@ test("fails when the host network misses the QG-1 baseline", () => {
   const result = evaluateReports(host, endpoint("viewer"), passingManualEvidence);
   assert.equal(result.qg1_status, "fail");
   assert.equal(result.checks.host_upstream_at_least_30_mbps, false);
+});
+
+test("fails when visual latency marker coverage is insufficient", () => {
+  const viewer = endpoint("viewer");
+  viewer.summary.automated_checks.visual_latency_samples_sufficient = false;
+  const result = evaluateReports(endpoint("host"), viewer, passingManualEvidence);
+  assert.equal(result.qg1_status, "fail");
+  assert.equal(result.checks.visual_latency_samples_sufficient, false);
 });
 
 test("rejects reports with swapped endpoint roles", () => {

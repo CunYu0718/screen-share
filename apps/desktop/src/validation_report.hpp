@@ -48,6 +48,8 @@ public:
 
     void start(ValidationRole role, ValidationEnvironment environment);
     [[nodiscard]] ValidationRecordResult record(const ValidationSampleInput& input);
+    void record_latency_sample(std::uint64_t latency_milliseconds) noexcept;
+    void record_latency_decode_failure() noexcept;
     [[nodiscard]] ValidationRecordResult stop_and_write();
 
     [[nodiscard]] bool active() const noexcept;
@@ -76,6 +78,8 @@ private:
     QDateTime started_at_utc_;
     ValidationEnvironment environment_;
     std::vector<Sample> samples_;
+    std::vector<std::uint64_t> latency_samples_milliseconds_;
+    std::uint64_t latency_decode_failures_{0};
 };
 
 [[nodiscard]] QString validation_role_name(ValidationRole role);

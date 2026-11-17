@@ -2,10 +2,13 @@
 #include "screen_share/core/session_policy.hpp"
 #include "screen_share/diagnostics/frame_rate_estimator.hpp"
 #include "screen_share/diagnostics/frame_pipeline_stats.hpp"
+#include "screen_share/diagnostics/visual_latency_marker.hpp"
 
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -90,6 +93,71 @@ int main() {
     check(frame_rate.sample().frames_per_second == 0.0, "idle sample reports zero fps");
     frame_rate.reset();
     check(frame_rate.sample().total_frames == 0, "frame rate reset clears totals");
+
+    constexpr std::uint32_t marker_width = 192;
+    constexpr std::uint32_t marker_height = 96;
+    constexpr std::uint32_t marker_pitch = marker_width * 4U;
+    std::vector<std::uint8_t> marker_frame(
+        static_cast<std::size_t>(marker_pitch) * marker_height, 127U);
+    constexpr std::uint64_t marker_timestamp = 1'794'941'147'123ULL;
+    const auto marker_bits =
+        screen_share::diagnostics::make_visual_latency_marker(marker_timestamp);
+    for (std::size_t index = 0; index < marker_bits.size(); ++index) {
+        const auto column = static_cast<std::uint32_t>(
+            index % screen_share::diagnostics::latency_marker_columns);
+        const auto row = static_cast<std::uint32_t>(
+            index / screen_share::diagnostics::latency_marker_columns);
+        const auto value = marker_bits[index] ? std::uint8_t{255} : std::uint8_t{0};
+        for (std::uint32_t y = 0;
+             y < screen_share::diagnostics::latency_marker_cell_size;
+             ++y) {
+            for (std::uint32_t x = 0;
+                 x < screen_share::diagnostics::latency_marker_cell_size;
+                 ++x) {
+                const auto pixel_x = screen_share::diagnostics::latency_marker_origin_x +
+                                     column *
+                                         screen_share::diagnostics::latency_marker_cell_size +
+                                     x;
+                const auto pixel_y = screen_share::diagnostics::latency_marker_origin_y +
+                                     row *
+                                         screen_share::diagnostics::latency_marker_cell_size +
+                                     y;
+                const auto offset = static_cast<std::size_t>(pixel_y) * marker_pitch +
+                                    static_cast<std::size_t>(pixel_x) * 4U;
+                marker_frame[offset] = value;
+                marker_frame[offset + 1U] = value;
+                marker_frame[offset + 2U] = value;
+                marker_frame[offset + 3U] = 255U;
+            }
+        }
+    }
+    const auto decoded_marker =
+        screen_share::diagnostics::decode_visual_latency_marker_bgra(
+            marker_frame, marker_width, marker_height, marker_pitch);
+    check(decoded_marker.has_value() && *decoded_marker == marker_timestamp,
+          "visual latency marker round trips through BGRA pixels");
+    for (std::uint32_t y = 0;
+         y < screen_share::diagnostics::latency_marker_cell_size;
+         ++y) {
+        for (std::uint32_t x = 0;
+             x < screen_share::diagnostics::latency_marker_cell_size;
+             ++x) {
+            const auto offset =
+                static_cast<std::size_t>(
+                    screen_share::diagnostics::latency_marker_origin_y + y) *
+                    marker_pitch +
+                static_cast<std::size_t>(
+                    screen_share::diagnostics::latency_marker_origin_x + x) *
+                    4U;
+            marker_frame[offset] = 255U;
+            marker_frame[offset + 1U] = 255U;
+            marker_frame[offset + 2U] = 255U;
+        }
+    }
+    check(!screen_share::diagnostics::decode_visual_latency_marker_bgra(
+               marker_frame, marker_width, marker_height, marker_pitch)
+               .has_value(),
+          "visual latency marker rejects a corrupted payload");
 
     std::cout << "All core tests passed\n";
     return EXIT_SUCCESS;

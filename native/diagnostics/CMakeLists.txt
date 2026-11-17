@@ -5,12 +5,14 @@ target_sources(
     PRIVATE
         src/frame_rate_estimator.cpp
         src/frame_pipeline_stats.cpp
+        src/visual_latency_marker.cpp
     PUBLIC
         FILE_SET HEADERS
         BASE_DIRS include
         FILES
             include/screen_share/diagnostics/frame_rate_estimator.hpp
             include/screen_share/diagnostics/frame_pipeline_stats.hpp
+            include/screen_share/diagnostics/visual_latency_marker.hpp
 )
 
 target_link_libraries(

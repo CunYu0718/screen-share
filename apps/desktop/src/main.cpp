@@ -3,10 +3,12 @@
 #include "screen_share/core/session_policy.hpp"
 #include "screen_share/diagnostics/frame_pipeline_stats.hpp"
 #include "screen_share/diagnostics/frame_rate_estimator.hpp"
+#include "screen_share/diagnostics/visual_latency_marker.hpp"
 #include "screen_share/media/d3d11_bgra_frame_reader.hpp"
 #include "screen_share/media/livekit_screen_publisher.hpp"
 #include "screen_share/media/livekit_screen_subscriber.hpp"
 #include "screen_share/renderer/d3d11_preview_renderer.hpp"
+#include "latency_marker_overlay.hpp"
 #include "validation_report.hpp"
 
 #include <QApplication>
@@ -34,6 +36,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <span>
 #include <utility>
 
 namespace {
@@ -308,9 +311,10 @@ int main(int argc, char* argv[]) {
     auto* host_button = new QPushButton(QStringLiteral("开始捕获"), central_widget);
     auto* join_button = new QPushButton(QStringLiteral("加入观看"), central_widget);
     auto* validation_button =
-        new QPushButton(QStringLiteral("开始 30 分钟验收记录"), central_widget);
+        new QPushButton(QStringLiteral("开始 30 分钟验收记录（显示延迟标记）"),
+                        central_widget);
     auto* validation_status = new QLabel(
-        QStringLiteral("M1-07：尚未记录；报告不包含令牌、窗口标题或屏幕内容。"),
+        QStringLiteral("M1-07：尚未记录；host 记录期间会在共享屏幕左上角显示时间标记。"),
         central_widget);
     validation_status->setWordWrap(true);
     const auto capture_session = std::make_shared<screen_share::capture::WgcCaptureSession>();
@@ -332,14 +336,21 @@ int main(int argc, char* argv[]) {
         std::make_shared<screen_share::media::LiveKitScreenSubscriber>();
     const auto readback_failures = std::make_shared<std::atomic<std::uint64_t>>(0);
     const auto capture_active_in_ui = std::make_shared<bool>(false);
+    const auto latency_marker_overlay =
+        std::make_shared<screen_share::desktop::LatencyMarkerOverlay>();
     const auto validation_recorder =
         std::make_shared<screen_share::desktop::ValidationReportRecorder>();
 
     const auto show_validation_result =
-        [validation_recorder, validation_button, validation_status](
+        [validation_recorder,
+         latency_marker_overlay,
+         validation_button,
+         validation_status](
             const screen_share::desktop::ValidationRecordResult& result) {
             if (result.completed) {
-                validation_button->setText(QStringLiteral("开始 30 分钟验收记录"));
+                latency_marker_overlay->hide();
+                validation_button->setText(
+                    QStringLiteral("开始 30 分钟验收记录（显示延迟标记）"));
                 if (!result.error_message.isEmpty()) {
                     validation_status->setText(result.error_message);
                 } else {
@@ -611,6 +622,8 @@ int main(int argc, char* argv[]) {
         [validation_recorder,
          screen_publisher,
          screen_subscriber,
+         source_combo,
+         latency_marker_overlay,
          validation_button,
          validation_status,
          sfu_version,
@@ -655,10 +668,28 @@ int main(int argc, char* argv[]) {
             };
             if (subscribe_snapshot.state ==
                 screen_share::media::LiveKitSubscribeState::Watching) {
+                latency_marker_overlay->hide();
                 validation_recorder->start(screen_share::desktop::ValidationRole::Viewer,
                                            environment);
             } else if (screen_publisher->snapshot().state ==
                        screen_share::media::LiveKitPublishState::Publishing) {
+                if (source_combo->currentIndex() < 0 ||
+                    static_cast<screen_share::capture::CaptureSourceKind>(
+                        source_combo->currentData(Qt::UserRole + 1).toInt()) !=
+                        screen_share::capture::CaptureSourceKind::Monitor) {
+                    validation_status->setText(
+                        QStringLiteral("端到端延迟标记只支持整屏验收，请选择屏幕而不是窗口。"));
+                    return;
+                }
+                const auto monitor_handle = static_cast<std::uintptr_t>(
+                    source_combo->currentData(Qt::UserRole).toULongLong());
+                if (!latency_marker_overlay->show_on_monitor(monitor_handle)) {
+                    validation_status->setText(
+                        QStringLiteral("无法在被共享屏幕创建延迟标记，请检查屏幕是否仍然连接。"));
+                    return;
+                }
+                latency_marker_overlay->update_timestamp(
+                    screen_share::diagnostics::utc_timestamp_milliseconds());
                 validation_recorder->start(screen_share::desktop::ValidationRole::Host,
                                            environment);
             } else {
@@ -671,6 +702,21 @@ int main(int argc, char* argv[]) {
             show_validation_result({});
         });
 
+    auto* latency_marker_timer = new QTimer(central_widget);
+    latency_marker_timer->setInterval(16);
+    latency_marker_timer->setTimerType(Qt::PreciseTimer);
+    QObject::connect(
+        latency_marker_timer,
+        &QTimer::timeout,
+        central_widget,
+        [latency_marker_overlay]() {
+            if (latency_marker_overlay->visible()) {
+                latency_marker_overlay->update_timestamp(
+                    screen_share::diagnostics::utc_timestamp_milliseconds());
+            }
+        });
+    latency_marker_timer->start();
+
     auto* remote_render_timer = new QTimer(central_widget);
     remote_render_timer->setInterval(8);
     remote_render_timer->setTimerType(Qt::PreciseTimer);
@@ -678,13 +724,32 @@ int main(int argc, char* argv[]) {
         remote_render_timer,
         &QTimer::timeout,
         preview_widget,
-        [pipeline_stats, preview_renderer, screen_subscriber]() {
+        [pipeline_stats, preview_renderer, screen_subscriber, validation_recorder]() {
             screen_share::media::BgraVideoFrame frame;
             if (!screen_subscriber->take_latest(frame)) {
                 return;
             }
             if (frame.width > std::numeric_limits<std::uint32_t>::max() / 4U) {
                 return;
+            }
+
+            if (validation_recorder->active() &&
+                validation_recorder->role() ==
+                    screen_share::desktop::ValidationRole::Viewer) {
+                const auto marker_timestamp =
+                    screen_share::diagnostics::decode_visual_latency_marker_bgra(
+                        std::span<const std::uint8_t>(frame.pixels.data(),
+                                                      frame.pixels.size()),
+                        frame.width,
+                        frame.height,
+                        frame.width * 4U);
+                const auto now = screen_share::diagnostics::utc_timestamp_milliseconds();
+                if (marker_timestamp.has_value() && now >= *marker_timestamp &&
+                    now - *marker_timestamp <= 10'000U) {
+                    validation_recorder->record_latency_sample(now - *marker_timestamp);
+                } else {
+                    validation_recorder->record_latency_decode_failure();
+                }
             }
 
             const screen_share::renderer::BgraFrameView frame_view{

@@ -20,6 +20,8 @@ target_sources(
     screen_share_desktop
     PRIVATE
         src/main.cpp
+        src/latency_marker_overlay.cpp
+        src/latency_marker_overlay.hpp
         src/validation_report.cpp
         src/validation_report.hpp
 )
@@ -37,6 +39,8 @@ target_link_libraries(
         Psapi
         d3d11
         dxgi
+        gdi32
+        user32
         screen_share_project_options
         screen_share_project_warnings
 )

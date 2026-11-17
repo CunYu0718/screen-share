@@ -128,6 +128,14 @@ export function evaluateReports(host, viewer, manualEvidence) {
       viewer,
       "no_observed_render_gap_over_500_ms",
     ),
+    visual_latency_samples_sufficient: booleanCheck(
+      viewer,
+      "visual_latency_samples_sufficient",
+    ),
+    visual_latency_p95_at_most_500_ms: booleanCheck(
+      viewer,
+      "visual_latency_p95_at_most_500_ms",
+    ),
     host_1440p_media: mediaResolutionAtLeast(host, 2560, 1440),
     viewer_1440p_media: mediaResolutionAtLeast(viewer, 2560, 1440),
     host_average_packet_loss_at_most_1_percent:
@@ -155,6 +163,7 @@ export function evaluateReports(host, viewer, manualEvidence) {
       viewer: viewer.system?.gpu,
     },
     measured_latency_p95_ms: latencyP95Ms,
+    visual_marker_latency_p95_ms: viewer.summary.visual_latency_p95_ms,
     endpoint_started_at_utc: {
       host: host.started_at_utc,
       viewer: viewer.started_at_utc,

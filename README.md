@@ -77,7 +77,7 @@ cmake --build --preset desktop
 
 状态栏使用固定顺序 `C/E/S/Rx/D/R` 展示 capture、encode、send、receive、decode、render 六段实际 fps，并显示阶段平均耗时、WebRTC 码率、丢包和队列丢帧。指标是技术验证数据，不代表 QG-1 已通过。
 
-发布或观看稳定后，先填写并确认本次实测的 SFU 版本、上/下行带宽、RTT 和基线丢包，再在两端分别点击“开始 30 分钟验收记录”。客户端会自动记录客户端提交、LiveKit SDK、Windows、默认 D3D11 GPU 与驱动信息，并把不含屏幕内容和凭证的端点 JSON 保存到“文档/ScreenShare/validation”；使用 `tools/qg1-evaluate.mjs` 合并两端报告和人工延迟/稳定性证据。完整步骤见[M1 实机媒体验收手册](docs/hardware-validation.md)。
+发布或观看稳定后，先填写并确认本次实测的 SFU 版本、上/下行带宽、RTT 和基线丢包，再先后启动 host、viewer 的 30 分钟验收记录。host 会在被共享屏幕左上角显示带 CRC 的 UTC 可视时间码，viewer 从实际解码帧统计链路延迟。客户端还会自动记录提交、LiveKit SDK、Windows、默认 D3D11 GPU 与驱动信息，并把不含屏幕内容和凭证的端点 JSON 保存到“文档/ScreenShare/validation”；使用 `tools/qg1-evaluate.mjs` 合并两端报告和独立延迟/稳定性证据。完整步骤见[M1 实机媒体验收手册](docs/hardware-validation.md)。
 
 会话 API 开发命令：
 
