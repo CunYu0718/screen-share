@@ -11,14 +11,33 @@
 ## 启动
 
 1. 复制 `infra/.env.example` 为 `infra/.env`。
-2. 为三个变量填写仅用于本机开发的高熵随机值。
-3. 验证配置并启动：
+2. 为 API/TURN 三个密钥变量填写仅用于本机开发的高熵随机值。
+3. 单机验证保持 `LIVEKIT_NODE_IP=127.0.0.1`；双机局域网验证必须改为运行 Docker 的宿主机 LAN IPv4，例如 `192.168.1.20`。不要填写容器 IP。
+4. 验证配置并启动：
 
 ```powershell
 docker compose --env-file infra/.env -f infra/compose.yaml config --quiet
 docker compose --env-file infra/.env -f infra/compose.yaml up -d
 docker compose --env-file infra/.env -f infra/compose.yaml ps
 ```
+
+双机验证还需在基础设施宿主机防火墙中允许下表端口，并让两台客户端使用 `ws://<LIVEKIT_NODE_IP>:7880`。该开发配置没有 TLS，不能跨不可信网络或暴露到公网。
+
+## 生成 M1 验收令牌
+
+仓库提供仅用于 M1 本地验证的短时令牌工具。它从被 Git 忽略的 `infra/.env` 读取 API 密钥，不会把 API secret 放入命令行或输出：
+
+```powershell
+npm run validation:tokens -- --env-file infra/.env --server-url ws://192.168.1.20:7880 --room qg1-validation
+```
+
+输出中的字段对应客户端：
+
+- 发起端：使用 `serverUrl`、`host.token`；发起者 identity 为 `host.identity`。
+- 观看端：使用 `serverUrl`、`viewer.token`，并把 `viewer.publisherIdentity` 填入“发起者身份”。
+- 默认有效期 60 分钟，可用 `--ttl-minutes 35` 至 `120` 调整。
+
+主持人令牌只能发布、不能订阅；观看者令牌只能订阅、不能发布；两者均不能发布 data channel 或修改自身元数据。令牌输出仍属于临时凭证，不得保存到报告、提交到 Git、粘贴到 Issue 或发送给无关人员。生产令牌签发仍属于 M2，不能复用这个命令行工具。
 
 停止服务：
 
@@ -42,7 +61,7 @@ docker compose --env-file infra/.env -f infra/compose.yaml down
 - LiveKit 密钥通过环境变量传入，不写入 YAML。
 - coturn 使用 TURN REST shared secret，不启用匿名访问。
 - 开发环境明确禁用 TURN TLS/DTLS；M3 将使用真实域名、可信证书并验证 TLS 443。
-- `use_external_ip: false` 只适合本机或局域网验证，公网部署必须重新配置。
+- `use_external_ip: false` 配合显式 `LIVEKIT_NODE_IP` 只适合本机或受信局域网验证，公网部署必须重新配置。
 - Redis 不映射到主机端口，不能直接暴露公网。
 
 ## 生产环境禁止直接复用

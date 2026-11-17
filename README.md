@@ -73,7 +73,7 @@ cmake --build --preset desktop
 
 每次主分支 CI 成功后会生成保留 14 天的 `screen-share-windows-x64-<commit>` 便携验收包，包含 Release 客户端、Qt 和 LiveKit 运行库。该 artifact 未签名、只用于专用测试机上的 M1 实机验证，不是正式发布版。
 
-当前 M1 界面需要手工输入 LiveKit WebSocket URL 和当前角色的短时令牌。观看端还需填写发起者的 participant identity，客户端将订阅其固定名称 `screen-share` 轨道。令牌签发与加入码将在 M2 接入会话 API；不要把令牌提交到仓库或日志。
+当前 M1 界面需要输入 LiveKit WebSocket URL 和当前角色的短时令牌。受信局域网验证可用 `npm run validation:tokens -- --env-file infra/.env --server-url ws://<LIVEKIT_NODE_IP>:7880` 生成一组 60 分钟、最小权限的 host/viewer 测试令牌；观看端还需填写输出中的 `viewer.publisherIdentity`。该工具只用于 M1 技术验收，生产令牌签发与加入码仍将在 M2 接入会话 API；不要把令牌提交到仓库、日志或验收报告。
 
 状态栏使用固定顺序 `C/E/S/Rx/D/R` 展示 capture、encode、send、receive、decode、render 六段实际 fps，并显示阶段平均耗时、WebRTC 码率、丢包和队列丢帧。指标是技术验证数据，不代表 QG-1 已通过。
 

@@ -11,7 +11,11 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present && npm run test:quality",
-    "test:quality": "node --test --test-isolation=none tools/qg1-evaluate.test.mjs",
+    "test:quality": "node --test --test-isolation=none tools/qg1-evaluate.test.mjs tools/create-validation-tokens.test.mjs",
+    "validation:tokens": "node tools/create-validation-tokens.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "livekit-server-sdk": "2.20.0"
   }
 }

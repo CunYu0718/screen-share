@@ -8,7 +8,8 @@ Before running:
 1. Confirm the artifact came from the CunYu0718/screen-share repository and the expected commit SHA.
 2. Do not disable Windows security controls globally. If Windows warns about this unsigned build, only continue on a dedicated test machine after verifying its origin.
 3. Start the local LiveKit/coturn/Redis/session infrastructure described in infra/README.md.
-4. Obtain short-lived role tokens. Never save tokens in this directory or upload them with validation reports.
+4. Set LIVEKIT_NODE_IP to the infrastructure host's LAN IPv4 for two-machine testing.
+5. Generate short-lived role tokens with `npm run validation:tokens`. Never save tokens in this directory or upload them with validation reports.
 
 Validation:
 - Run one host and one viewer on separate Windows machines.
