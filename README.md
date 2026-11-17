@@ -2,7 +2,7 @@
 
 面向 Windows 的高性能实时屏幕共享软件。发起者和观看者使用同一款桌面客户端；每个房间最多包含 1 名发起者和 20 名观看者，目标支持 1920×1080@60fps 与 2560×1440@60fps。
 
-> 项目状态：M0 工程基线已通过 CI，M1 已完成捕获源选择、D3D11 帧捕获和本地 GPU 预览基线。当前仓库尚未发布可运行版本，请勿用于生产环境。
+> 项目状态：M0 工程基线已通过 CI，M1 已完成捕获源选择、D3D11 帧捕获、本地 GPU 预览和 LiveKit 原始屏幕帧发布基线。当前仓库尚未发布可运行版本，请勿用于生产环境。
 
 ## 核心目标
 
@@ -61,14 +61,16 @@ cmake --build --preset dev
 ctest --preset dev
 ```
 
-构建 Qt 桌面客户端（已支持选择捕获源、GPU 预览和 capture fps 统计）：
+构建 Qt 桌面客户端（已支持选择捕获源、GPU 预览、capture fps 统计和 LiveKit 屏幕轨道发布）：
 
 ```powershell
 cmake --preset desktop
 cmake --build --preset desktop
 ```
 
-桌面目标要求 Qt 6.10.3。完整工具链和版本策略见[依赖基线](docs/dependencies.md)。
+桌面目标要求 Qt 6.10.3。配置时会下载锁定的 LiveKit C++ SDK v1.13.1 Windows x64 预编译包并校验 SHA-256；离线构建可通过 `SCREEN_SHARE_LIVEKIT_SDK_ROOT` 指向已解压的 SDK。完整工具链和版本策略见[依赖基线](docs/dependencies.md)。
+
+当前 M1 界面需要手工输入 LiveKit WebSocket URL 和仅允许发布屏幕的短时令牌。令牌签发与加入码将在 M2 接入会话 API；不要把令牌提交到仓库或日志。
 
 会话 API 开发命令：
 

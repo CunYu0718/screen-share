@@ -376,7 +376,8 @@ screen_share/
 ## 10. 首个开发迭代任务
 
 - [x] 初始化 C++20、Qt 6、CMake 和基础 CI。
-- [ ] 集成 LiveKit C++ SDK 并跑通本地房间。
+- [x] 锁定并集成 LiveKit C++ SDK，完成原始屏幕帧发布适配层。
+- [ ] 使用两个客户端跑通本地 LiveKit 房间。
 - [x] 实现 Windows.Graphics.Capture 屏幕和窗口 D3D11 帧捕获基线。
 - [x] 建立 D3D11 本地预览与 capture fps 统计基线。
 - [ ] 发布并接收第一条屏幕视频轨道。

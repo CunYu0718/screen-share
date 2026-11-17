@@ -30,7 +30,8 @@
       "displayName": "Local Qt desktop development",
       "inherits": "dev",
       "cacheVariables": {
-        "SCREEN_SHARE_BUILD_DESKTOP": "ON"
+        "SCREEN_SHARE_BUILD_DESKTOP": "ON",
+        "SCREEN_SHARE_ENABLE_LIVEKIT": "ON"
       }
     },
     {
@@ -45,7 +46,8 @@
       "displayName": "Windows Qt desktop CI",
       "inherits": "ci-windows",
       "cacheVariables": {
-        "SCREEN_SHARE_BUILD_DESKTOP": "ON"
+        "SCREEN_SHARE_BUILD_DESKTOP": "ON",
+        "SCREEN_SHARE_ENABLE_LIVEKIT": "ON"
       }
     }
   ],

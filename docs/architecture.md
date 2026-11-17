@@ -80,7 +80,8 @@ flowchart LR
 ```text
 Windows.Graphics.Capture
   → D3D11 Capture Frame
-  → 尺寸/色彩处理
+  → D3D11 staging texture / BGRA CPU readback（M1 原始帧验证路径）
+  → 单槽最新帧队列（拥塞时丢弃旧帧）
   → LiveKit VideoSource
   → H.264 硬件编码
   → 720p30 / 1080p60 / 1440p60 质量层
@@ -104,6 +105,7 @@ SFU
 - 媒体线程不得等待 UI 线程。
 - 渲染队列必须有界；实时性优先于播放所有历史帧。
 - 任何 GPU→CPU→GPU 拷贝必须被性能追踪记录。
+- LiveKit 原始帧 API 持有 CPU 像素缓冲；M1-04 因此使用 BGRA 读回，并将阻塞式 `captureFrame` 隔离在单独发布线程。若 QG-1 证明读回无法稳定达到目标，按既定方案切换 `EncodedVideoSource` 和 Windows 硬件编码器。
 - 2K60 编码失败时依次降级到 1080p60、1080p30、720p30。
 - 没有观看者订阅最高层时暂停最高层编码。
 

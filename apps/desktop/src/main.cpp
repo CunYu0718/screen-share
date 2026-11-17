@@ -3,12 +3,16 @@
 #include "screen_share/core/session_policy.hpp"
 #include "screen_share/diagnostics/frame_pipeline_stats.hpp"
 #include "screen_share/diagnostics/frame_rate_estimator.hpp"
+#include "screen_share/media/d3d11_bgra_frame_reader.hpp"
+#include "screen_share/media/livekit_screen_publisher.hpp"
 #include "screen_share/renderer/d3d11_preview_renderer.hpp"
 
 #include <QApplication>
 #include <QComboBox>
+#include <QFormLayout>
 #include <QGroupBox>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMainWindow>
 #include <QPaintEngine>
 #include <QPushButton>
@@ -24,6 +28,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <utility>
 
 namespace {
 
@@ -125,6 +130,44 @@ public:
     return QStringLiteral("无法启动屏幕捕获。");
 }
 
+[[nodiscard]] QString publish_start_message(
+    const screen_share::media::LiveKitPublishStartResult result) {
+    using screen_share::media::LiveKitPublishStartResult;
+
+    switch (result) {
+        case LiveKitPublishStartResult::Starting:
+            return QStringLiteral("正在连接 LiveKit 并发布屏幕轨道…");
+        case LiveKitPublishStartResult::AlreadyActive:
+            return QStringLiteral("LiveKit 发布已在连接或运行。");
+        case LiveKitPublishStartResult::InvalidConfiguration:
+            return QStringLiteral("请检查 LiveKit URL、令牌和当前捕获尺寸。");
+        case LiveKitPublishStartResult::FailedToStart:
+            return QStringLiteral("无法启动 LiveKit 发布工作线程。");
+    }
+
+    return QStringLiteral("无法启动 LiveKit 发布。");
+}
+
+[[nodiscard]] QString publish_error_message(
+    const screen_share::media::LiveKitPublishError error) {
+    using screen_share::media::LiveKitPublishError;
+
+    switch (error) {
+        case LiveKitPublishError::None:
+            return QStringLiteral("无错误");
+        case LiveKitPublishError::ConnectionFailed:
+            return QStringLiteral("LiveKit 连接失败，请检查服务、URL 和令牌");
+        case LiveKitPublishError::ParticipantUnavailable:
+            return QStringLiteral("房间已连接，但无法取得本地参与者");
+        case LiveKitPublishError::TrackPublicationFailed:
+            return QStringLiteral("房间已连接，但屏幕轨道发布失败");
+        case LiveKitPublishError::FramePublicationFailed:
+            return QStringLiteral("向 LiveKit 提交视频帧时失败");
+    }
+
+    return QStringLiteral("未知发布错误");
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -135,7 +178,7 @@ int main(int argc, char* argv[]) {
 
     QMainWindow window;
     window.setWindowTitle(QStringLiteral("Screen Share · M1"));
-    window.resize(800, 720);
+    window.resize(820, 860);
 
     auto* central_widget = new QWidget(&window);
     auto* layout = new QVBoxLayout(central_widget);
@@ -171,7 +214,18 @@ int main(int argc, char* argv[]) {
     auto* preview_widget = new D3DPreviewWidget(preview_group);
     preview_layout->addWidget(preview_widget);
 
-    auto* status = new QLabel(QStringLiteral("M1-03：请选择屏幕或窗口"), central_widget);
+    auto* publish_group = new QGroupBox(QStringLiteral("LiveKit 屏幕发布"), central_widget);
+    auto* publish_layout = new QFormLayout(publish_group);
+    auto* server_url = new QLineEdit(QStringLiteral("ws://localhost:7880"), publish_group);
+    auto* access_token = new QLineEdit(publish_group);
+    access_token->setEchoMode(QLineEdit::Password);
+    access_token->setPlaceholderText(QStringLiteral("粘贴仅允许发布屏幕的短时令牌"));
+    auto* publish_button = new QPushButton(QStringLiteral("开始发布"), publish_group);
+    publish_layout->addRow(QStringLiteral("服务器 URL"), server_url);
+    publish_layout->addRow(QStringLiteral("访问令牌"), access_token);
+    publish_layout->addRow(publish_button);
+
+    auto* status = new QLabel(QStringLiteral("M1-04：请选择屏幕或窗口"), central_widget);
     status->setWordWrap(true);
     auto* host_button = new QPushButton(QStringLiteral("开始捕获"), central_widget);
     auto* join_button = new QPushButton(QStringLiteral("加入观看"), central_widget);
@@ -184,6 +238,11 @@ int main(int argc, char* argv[]) {
         reinterpret_cast<void*>(preview_widget->winId()));
     const auto preview_renderer =
         std::make_shared<screen_share::renderer::D3D11PreviewRenderer>(preview_handle);
+    const auto frame_reader =
+        std::make_shared<screen_share::media::D3D11BgraFrameReader>();
+    const auto screen_publisher =
+        std::make_shared<screen_share::media::LiveKitScreenPublisher>();
+    const auto readback_failures = std::make_shared<std::atomic<std::uint64_t>>(0);
     const auto capture_active_in_ui = std::make_shared<bool>(false);
 
     const auto refresh_sources = [source_combo, source_message]() {
@@ -222,18 +281,25 @@ int main(int argc, char* argv[]) {
          frame_rate,
          pipeline_stats,
          preview_renderer,
+         frame_reader,
+         screen_publisher,
+         readback_failures,
          capture_active_in_ui,
          source_combo,
          refresh_button,
          host_button,
+         publish_button,
          status]() {
             if (*capture_active_in_ui) {
                 capture_session->stop();
+                screen_publisher->stop();
+                frame_reader->reset();
                 preview_renderer->reset();
                 *capture_active_in_ui = false;
                 source_combo->setEnabled(source_combo->count() > 0);
                 refresh_button->setEnabled(true);
                 host_button->setText(QStringLiteral("开始捕获"));
+                publish_button->setText(QStringLiteral("开始发布"));
                 status->setText(QStringLiteral("捕获已停止。"));
                 return;
             }
@@ -255,10 +321,19 @@ int main(int argc, char* argv[]) {
             frame_rate->reset();
             pipeline_stats->reset();
             preview_renderer->reset();
+            screen_publisher->stop();
+            frame_reader->reset();
+            readback_failures->store(0, std::memory_order_relaxed);
 
             const auto result = capture_session->start(
                 source,
-                [latest_frame, frame_rate, pipeline_stats, preview_renderer](
+                [latest_frame,
+                 frame_rate,
+                 pipeline_stats,
+                 preview_renderer,
+                 frame_reader,
+                 screen_publisher,
+                 readback_failures](
                     const screen_share::capture::D3D11CaptureFrameView& frame) {
                     latest_frame->width.store(frame.width, std::memory_order_relaxed);
                     latest_frame->height.store(frame.height, std::memory_order_relaxed);
@@ -268,6 +343,17 @@ int main(int argc, char* argv[]) {
                         screen_share::renderer::PreviewRenderResult::Rendered) {
                         pipeline_stats->record(screen_share::diagnostics::PipelineStage::Render);
                     }
+
+                    if (screen_publisher->snapshot().state ==
+                        screen_share::media::LiveKitPublishState::Publishing) {
+                        screen_share::media::BgraVideoFrame video_frame;
+                        if (frame_reader->read(frame, video_frame) ==
+                            screen_share::media::D3D11ReadbackResult::Read) {
+                            static_cast<void>(screen_publisher->submit(std::move(video_frame)));
+                        } else {
+                            readback_failures->fetch_add(1, std::memory_order_relaxed);
+                        }
+                    }
                 });
             status->setText(capture_start_message(result));
 
@@ -276,6 +362,45 @@ int main(int argc, char* argv[]) {
                 source_combo->setEnabled(false);
                 refresh_button->setEnabled(false);
                 host_button->setText(QStringLiteral("停止捕获"));
+            }
+        });
+    QObject::connect(
+        publish_button,
+        &QPushButton::clicked,
+        status,
+        [capture_session,
+         latest_frame,
+         screen_publisher,
+         server_url,
+         access_token,
+         publish_button,
+         status]() {
+            const auto current = screen_publisher->snapshot();
+            if (current.state == screen_share::media::LiveKitPublishState::Connecting ||
+                current.state == screen_share::media::LiveKitPublishState::Publishing) {
+                screen_publisher->stop();
+                publish_button->setText(QStringLiteral("开始发布"));
+                status->setText(QStringLiteral("LiveKit 屏幕发布已停止，捕获与预览继续。"));
+                return;
+            }
+
+            const auto width = latest_frame->width.load(std::memory_order_relaxed);
+            const auto height = latest_frame->height.load(std::memory_order_relaxed);
+            if (!capture_session->running() || width == 0U || height == 0U) {
+                status->setText(QStringLiteral("请先开始捕获并等待首帧。"));
+                return;
+            }
+
+            const screen_share::media::LiveKitPublishConfig configuration{
+                .server_url = server_url->text().trimmed().toStdString(),
+                .access_token = access_token->text().trimmed().toStdString(),
+                .track_name = "screen-share",
+            };
+            const auto result = screen_publisher->start(configuration, width, height);
+            status->setText(publish_start_message(result));
+            if (result == screen_share::media::LiveKitPublishStartResult::Starting ||
+                result == screen_share::media::LiveKitPublishStartResult::AlreadyActive) {
+                publish_button->setText(QStringLiteral("停止发布"));
             }
         });
     QObject::connect(join_button, &QPushButton::clicked, status, [status]() {
@@ -293,18 +418,25 @@ int main(int argc, char* argv[]) {
          frame_rate,
          pipeline_stats,
          preview_renderer,
+         frame_reader,
+         screen_publisher,
+         readback_failures,
          capture_active_in_ui,
          source_combo,
          refresh_button,
          host_button,
+         publish_button,
          status]() {
             if (*capture_active_in_ui && !capture_session->running()) {
                 capture_session->stop();
+                screen_publisher->stop();
+                frame_reader->reset();
                 preview_renderer->reset();
                 *capture_active_in_ui = false;
                 source_combo->setEnabled(source_combo->count() > 0);
                 refresh_button->setEnabled(true);
                 host_button->setText(QStringLiteral("开始捕获"));
+                publish_button->setText(QStringLiteral("开始发布"));
                 status->setText(QStringLiteral("捕获源已关闭，请刷新后重试。"));
                 return;
             }
@@ -323,12 +455,36 @@ int main(int argc, char* argv[]) {
             const auto height = latest_frame->height.load(std::memory_order_relaxed);
             const auto rendered_frames = pipeline_snapshot.count(
                 screen_share::diagnostics::PipelineStage::Render);
-            status->setText(QStringLiteral("正在捕获 %1×%2 · capture %3 fps · 预览 %4/%5 帧")
+            const auto publish_snapshot = screen_publisher->snapshot();
+            QString publish_status;
+            switch (publish_snapshot.state) {
+                case screen_share::media::LiveKitPublishState::Idle:
+                    publish_status = QStringLiteral("未发布");
+                    break;
+                case screen_share::media::LiveKitPublishState::Connecting:
+                    publish_status = QStringLiteral("LiveKit 连接中");
+                    break;
+                case screen_share::media::LiveKitPublishState::Publishing:
+                    publish_status =
+                        QStringLiteral("SDK 发布 %1/%2 帧 · 丢弃 %3")
+                            .arg(static_cast<qulonglong>(publish_snapshot.published_frames))
+                            .arg(static_cast<qulonglong>(publish_snapshot.accepted_frames))
+                            .arg(static_cast<qulonglong>(publish_snapshot.dropped_frames));
+                    break;
+                case screen_share::media::LiveKitPublishState::Failed:
+                    publish_status = publish_error_message(publish_snapshot.error);
+                    publish_button->setText(QStringLiteral("重新发布"));
+                    break;
+            }
+            status->setText(QStringLiteral("正在捕获 %1×%2 · capture %3 fps · 预览 %4/%5 帧 · %6 · 读回失败 %7")
                                 .arg(width)
                                 .arg(height)
                                 .arg(rate_sample.frames_per_second, 0, 'f', 1)
                                 .arg(static_cast<qulonglong>(rendered_frames))
-                                .arg(static_cast<qulonglong>(rate_sample.total_frames)));
+                                .arg(static_cast<qulonglong>(rate_sample.total_frames))
+                                .arg(publish_status)
+                                .arg(static_cast<qulonglong>(
+                                    readback_failures->load(std::memory_order_relaxed))));
         });
     frame_status_timer->start();
 
@@ -337,6 +493,7 @@ int main(int argc, char* argv[]) {
     layout->addSpacing(12);
     layout->addWidget(source_group);
     layout->addWidget(preview_group, 1);
+    layout->addWidget(publish_group);
     layout->addWidget(host_button);
     layout->addWidget(join_button);
     layout->addStretch();
@@ -348,6 +505,8 @@ int main(int argc, char* argv[]) {
 
     const auto exit_code = application.exec();
     capture_session->stop();
+    screen_publisher->stop();
+    frame_reader->reset();
     preview_renderer->reset();
     return exit_code;
 }

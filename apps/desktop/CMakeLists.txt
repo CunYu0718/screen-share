@@ -10,10 +10,13 @@ target_link_libraries(
         ScreenShare::Capture
         ScreenShare::Core
         ScreenShare::Diagnostics
+        ScreenShare::MediaLiveKit
         ScreenShare::Renderer
         screen_share_project_options
         screen_share_project_warnings
 )
+
+screen_share_copy_livekit_runtime(screen_share_desktop)
 
 set_target_properties(
     screen_share_desktop

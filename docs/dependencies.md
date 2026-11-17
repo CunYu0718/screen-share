@@ -11,7 +11,7 @@
 | MSVC | Visual Studio 2022 x64 | Windows 基线编译器 | CI 使用 |
 | Windows | 10 1903 (Build 18362)+ / 11 | `GraphicsCaptureItem` Win32 互操作 | M1 捕获基线 |
 | Qt | 6.10.3 | 桌面 UI | CMake 与桌面 CI 已接入 |
-| LiveKit C++ SDK | v1.13.1 | WebRTC 发布、订阅与帧接口 | M1 接入 |
+| LiveKit C++ SDK | v1.13.1 | WebRTC 发布、订阅与帧接口 | Windows x64 发布端已接入 |
 | Node.js | 24.x | 会话 API | M0 后半接入 |
 | Fastify | 5.12.8 | 会话 API HTTP 服务 | 已接入 |
 | TypeScript | 7.0.2 | 会话 API类型检查与构建 | 已接入 |
@@ -29,6 +29,7 @@
 - 依赖升级单独提交，并附带构建、测试和性能结果。
 - Qt 小版本升级需要重新验证 Windows 10/11、DPI、渲染和打包。
 - LiveKit SDK 升级需要重新验证 QG-1、重连、simulcast 和硬件编解码。
+- Windows SDK 预编译包固定 SHA-256 `6696ee87c78b958bdbf70e5eb39bf85e1c7528ca2a707e6c13b042c8e4360b9d`；哈希不匹配时配置必须失败。
 - CI Action 使用完整版本标签；安全修复通过自动化依赖更新后人工合并。
 
 ## 3. 当前本机状态
