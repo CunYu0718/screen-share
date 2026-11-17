@@ -611,7 +611,7 @@ int main(int argc, char* argv[]) {
                     case screen_share::media::LiveKitSubscribeState::Connecting:
                         status->setText(QStringLiteral("正在连接 LiveKit 观看房间…"));
                         break;
-                    case screen_share::media::LiveKitSubscribeState::Watching:
+                    case screen_share::media::LiveKitSubscribeState::Watching: {
                         pipeline_stats->set_count(
                             screen_share::diagnostics::PipelineStage::Receive,
                             subscribe_snapshot.stats_samples > 0U
@@ -686,6 +686,7 @@ int main(int argc, char* argv[]) {
                                 .arg(static_cast<qulonglong>(
                                     subscribe_snapshot.dropped_frames)));
                         break;
+                    }
                     case screen_share::media::LiveKitSubscribeState::Failed:
                         status->setText(subscribe_error_message(subscribe_snapshot.error));
                         join_button->setText(QStringLiteral("重新加入"));
