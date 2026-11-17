@@ -1,3 +1,7 @@
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
 #include "validation_report.hpp"
 
 #include <QCoreApplication>
