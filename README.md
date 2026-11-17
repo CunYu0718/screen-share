@@ -2,7 +2,7 @@
 
 面向 Windows 的高性能实时屏幕共享软件。发起者和观看者使用同一款桌面客户端；每个房间最多包含 1 名发起者和 20 名观看者，目标支持 1920×1080@60fps 与 2560×1440@60fps。
 
-> 项目状态：需求与架构设计阶段。当前仓库尚未发布可运行版本，请勿用于生产环境。
+> 项目状态：M0 工程基线开发中。当前仓库尚未发布可运行版本，请勿用于生产环境。
 
 ## 核心目标
 
@@ -40,6 +40,7 @@
 - [系统架构](docs/architecture.md)
 - [开发顺序与里程碑](docs/development-order.md)
 - [性能与质量闸门](docs/quality-gates.md)
+- [依赖基线](docs/dependencies.md)
 - [ADR-0001：原生 Windows 客户端与 SFU](docs/adr/0001-native-windows-client-and-sfu.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全策略](SECURITY.md)
@@ -47,6 +48,25 @@
 ## 当前范围
 
 MVP 仅支持 Windows 10/11。远程控制、录制、文件传输、剪贴板、摄像头、聊天和跨平台客户端不在首版范围内。
+
+## 构建工程基线
+
+仅构建不依赖 Qt 的核心模块和测试：
+
+```powershell
+cmake --preset dev
+cmake --build --preset dev
+ctest --preset dev
+```
+
+构建 Qt 桌面壳：
+
+```powershell
+cmake --preset desktop
+cmake --build --preset desktop
+```
+
+桌面目标要求 Qt 6.12.0。完整工具链和版本策略见[依赖基线](docs/dependencies.md)。
 
 ## 许可证
 
