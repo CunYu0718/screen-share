@@ -41,6 +41,7 @@
 - [开发顺序与里程碑](docs/development-order.md)
 - [性能与质量闸门](docs/quality-gates.md)
 - [M1 实机媒体验收手册](docs/hardware-validation.md)
+- [双机 1080p60 / 1440p60 实测 SOP](docs/two-machine-validation-sop.md)
 - [依赖基线](docs/dependencies.md)
 - [可观测性与错误契约](docs/observability.md)
 - [本地基础设施](infra/README.md)
