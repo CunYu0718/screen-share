@@ -9,7 +9,7 @@
 | C++ | C++20 | 客户端与原生媒体模块 | 已写入 CMake |
 | CMake | 最低 3.25；推荐 4.5.0 | 配置与构建 | 核心工程已接入 |
 | MSVC | Visual Studio 2022 x64 | Windows 基线编译器 | CI 使用 |
-| Qt | 6.12.0 LTS | 桌面 UI | CMake 可选目标已接入 |
+| Qt | 6.11.3 | 桌面 UI | CMake 与桌面 CI 已接入 |
 | LiveKit C++ SDK | v1.13.1 | WebRTC 发布、订阅与帧接口 | M1 接入 |
 | Node.js | 24.x | 会话 API | M0 后半接入 |
 | Fastify | 5.12.8 | 会话 API HTTP 服务 | 已接入 |

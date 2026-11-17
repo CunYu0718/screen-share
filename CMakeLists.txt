@@ -27,7 +27,7 @@ add_subdirectory(native/core)
 add_subdirectory(native/diagnostics)
 
 if(SCREEN_SHARE_BUILD_DESKTOP)
-    find_package(Qt6 6.12.0 EXACT REQUIRED COMPONENTS Core Widgets)
+    find_package(Qt6 6.11.3 EXACT REQUIRED COMPONENTS Core Widgets)
     add_subdirectory(apps/desktop)
 endif()
 
