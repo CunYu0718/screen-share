@@ -6,7 +6,9 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <mutex>
 #include <utility>
 
@@ -43,19 +45,21 @@ struct D3D11PreviewRenderer::Impl final {
         buffer_height = 0;
     }
 
-    [[nodiscard]] bool ensure_device(ID3D11Texture2D* const texture) {
-        ComPtr<ID3D11Device> frame_device;
-        texture->GetDevice(frame_device.GetAddressOf());
-        if (!frame_device) {
+    [[nodiscard]] bool bind_device(ComPtr<ID3D11Device> next_device) {
+        if (!next_device) {
             return false;
         }
-        if (device.Get() == frame_device.Get()) {
+        if (device.Get() == next_device.Get()) {
             return true;
         }
 
         release_device_resources();
-        device = std::move(frame_device);
+        device = std::move(next_device);
         device->GetImmediateContext(context.GetAddressOf());
+        if (!context) {
+            release_device_resources();
+            return false;
+        }
 
         ComPtr<IDXGIDevice> dxgi_device;
         if (FAILED(device.As(&dxgi_device))) {
@@ -72,6 +76,32 @@ struct D3D11PreviewRenderer::Impl final {
         }
 
         return true;
+    }
+
+    [[nodiscard]] bool ensure_device(ID3D11Texture2D* const texture) {
+        ComPtr<ID3D11Device> frame_device;
+        texture->GetDevice(frame_device.GetAddressOf());
+        return bind_device(std::move(frame_device));
+    }
+
+    [[nodiscard]] bool ensure_upload_device() {
+        if (device) {
+            return true;
+        }
+
+        ComPtr<ID3D11Device> upload_device;
+        const auto create_result = D3D11CreateDevice(
+            nullptr,
+            D3D_DRIVER_TYPE_HARDWARE,
+            nullptr,
+            D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+            nullptr,
+            0,
+            D3D11_SDK_VERSION,
+            upload_device.GetAddressOf(),
+            nullptr,
+            nullptr);
+        return SUCCEEDED(create_result) && bind_device(std::move(upload_device));
     }
 
     [[nodiscard]] bool ensure_swap_chain(const std::uint32_t width,
@@ -167,6 +197,50 @@ struct D3D11PreviewRenderer::Impl final {
         context->CopySubresourceRegion(
             back_buffer.Get(), 0, 0, 0, 0, frame.texture, 0, &source_box);
 
+        return present();
+    }
+
+    [[nodiscard]] PreviewRenderResult render(const BgraFrameView& frame) {
+        if (frame.data == nullptr || frame.width == 0U || frame.height == 0U) {
+            return PreviewRenderResult::InvalidFrame;
+        }
+
+        constexpr auto bytes_per_pixel = std::size_t{4};
+        if (static_cast<std::size_t>(frame.width) >
+            std::numeric_limits<std::size_t>::max() / bytes_per_pixel) {
+            return PreviewRenderResult::InvalidFrame;
+        }
+        const auto minimum_row_pitch =
+            static_cast<std::size_t>(frame.width) * bytes_per_pixel;
+        if (static_cast<std::size_t>(frame.row_pitch) < minimum_row_pitch ||
+            static_cast<std::size_t>(frame.height) >
+                std::numeric_limits<std::size_t>::max() /
+                    static_cast<std::size_t>(frame.row_pitch) ||
+            frame.data_size < static_cast<std::size_t>(frame.row_pitch) *
+                                  static_cast<std::size_t>(frame.height)) {
+            return PreviewRenderResult::InvalidFrame;
+        }
+        if (target_window == nullptr || IsWindow(target_window) == FALSE) {
+            return PreviewRenderResult::TargetUnavailable;
+        }
+        if (!ensure_upload_device() || !ensure_swap_chain(frame.width, frame.height)) {
+            return PreviewRenderResult::Failed;
+        }
+
+        ComPtr<ID3D11Texture2D> back_buffer;
+        const auto buffer_result = swap_chain->GetBuffer(
+            0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(back_buffer.GetAddressOf()));
+        if (FAILED(buffer_result)) {
+            return PreviewRenderResult::Failed;
+        }
+
+        context->UpdateSubresource(
+            back_buffer.Get(), 0, nullptr, frame.data, frame.row_pitch, 0);
+        return present();
+    }
+
+    [[nodiscard]] PreviewRenderResult present() {
+
         const auto present_result = swap_chain->Present(0, DXGI_PRESENT_DO_NOT_WAIT);
         if (present_result == DXGI_ERROR_WAS_STILL_DRAWING ||
             present_result == DXGI_STATUS_OCCLUDED) {
@@ -192,6 +266,15 @@ D3D11PreviewRenderer::~D3D11PreviewRenderer() {
 
 PreviewRenderResult D3D11PreviewRenderer::render(
     const screen_share::capture::D3D11CaptureFrameView& frame) noexcept {
+    try {
+        const std::scoped_lock lock(implementation_->mutex);
+        return implementation_->render(frame);
+    } catch (...) {
+        return PreviewRenderResult::Failed;
+    }
+}
+
+PreviewRenderResult D3D11PreviewRenderer::render(const BgraFrameView& frame) noexcept {
     try {
         const std::scoped_lock lock(implementation_->mutex);
         return implementation_->render(frame);

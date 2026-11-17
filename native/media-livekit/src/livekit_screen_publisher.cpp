@@ -1,5 +1,7 @@
 #include "screen_share/media/livekit_screen_publisher.hpp"
 
+#include "livekit_runtime.hpp"
+
 #include <livekit/livekit.h>
 
 #include <atomic>
@@ -14,41 +16,6 @@
 namespace screen_share::media {
 namespace {
 
-class LiveKitRuntimeLease final {
-public:
-    LiveKitRuntimeLease() {
-        const std::scoped_lock lock(runtime_mutex());
-        if (runtime_users() == 0U) {
-            static_cast<void>(livekit::initialize(livekit::LogLevel::Info));
-        }
-        ++runtime_users();
-    }
-
-    ~LiveKitRuntimeLease() {
-        const std::scoped_lock lock(runtime_mutex());
-        if (runtime_users() > 0U) {
-            --runtime_users();
-            if (runtime_users() == 0U) {
-                livekit::shutdown();
-            }
-        }
-    }
-
-    LiveKitRuntimeLease(const LiveKitRuntimeLease&) = delete;
-    LiveKitRuntimeLease& operator=(const LiveKitRuntimeLease&) = delete;
-
-private:
-    [[nodiscard]] static std::mutex& runtime_mutex() {
-        static std::mutex mutex;
-        return mutex;
-    }
-
-    [[nodiscard]] static std::uint32_t& runtime_users() {
-        static std::uint32_t users{0};
-        return users;
-    }
-};
-
 [[nodiscard]] bool dimensions_supported(
     const std::uint32_t width, const std::uint32_t height) noexcept {
     const auto maximum_dimension = static_cast<std::uint32_t>(std::numeric_limits<int>::max());
@@ -58,15 +25,8 @@ private:
 
 }  // namespace
 
-bool is_valid_livekit_url(const std::string& url) noexcept {
-    constexpr auto insecure_prefix = "ws://";
-    constexpr auto secure_prefix = "wss://";
-    return (url.starts_with(insecure_prefix) && url.size() > std::char_traits<char>::length(insecure_prefix)) ||
-           (url.starts_with(secure_prefix) && url.size() > std::char_traits<char>::length(secure_prefix));
-}
-
 struct LiveKitScreenPublisher::Impl final {
-    LiveKitRuntimeLease runtime;
+    detail::LiveKitRuntimeLease runtime;
     mutable std::mutex lifecycle_mutex;
     std::thread worker;
 

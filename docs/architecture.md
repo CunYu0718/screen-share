@@ -94,9 +94,10 @@ Windows.Graphics.Capture
 ```text
 SFU
   → WebRTC
-  → H.264 硬件解码
-  → 帧队列（有界、允许丢旧帧）
-  → D3D11 Renderer
+  → LiveKit VideoStream（容量 1、BGRA 输出）
+  → H.264 解码与 BGRA 转换
+  → 客户端最新帧槽（容量 1、允许丢旧帧）
+  → D3D11 UpdateSubresource / Renderer
   → Qt 窗口
 ```
 
@@ -104,6 +105,7 @@ SFU
 
 - 媒体线程不得等待 UI 线程。
 - 渲染队列必须有界；实时性优先于播放所有历史帧。
+- 接收回调不得直接等待 UI；解码线程只更新最新帧槽，Qt 精确定时器负责 CPU→GPU 上传和呈现。
 - 任何 GPU→CPU→GPU 拷贝必须被性能追踪记录。
 - LiveKit 原始帧 API 持有 CPU 像素缓冲；M1-04 因此使用 BGRA 读回，并将阻塞式 `captureFrame` 隔离在单独发布线程。若 QG-1 证明读回无法稳定达到目标，按既定方案切换 `EncodedVideoSource` 和 Windows 硬件编码器。
 - 2K60 编码失败时依次降级到 1080p60、1080p30、720p30。

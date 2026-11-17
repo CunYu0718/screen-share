@@ -68,7 +68,8 @@ int main() {
     capture_session.stop();
 
     screen_share::renderer::D3D11PreviewRenderer preview_renderer(0U);
-    const auto invalid_preview = preview_renderer.render({
+    const auto invalid_preview = preview_renderer.render(
+        screen_share::capture::D3D11CaptureFrameView{
         .texture = nullptr,
         .width = 0,
         .height = 0,
@@ -76,6 +77,18 @@ int main() {
     });
     check(invalid_preview == screen_share::renderer::PreviewRenderResult::InvalidFrame,
           "preview rejects an empty frame without creating GPU resources");
+    const std::uint8_t pixel[]{0, 0, 0, 0};
+    const auto unavailable_cpu_preview = preview_renderer.render(
+        screen_share::renderer::BgraFrameView{
+        .data = pixel,
+        .data_size = sizeof(pixel),
+        .width = 1,
+        .height = 1,
+        .row_pitch = 4,
+    });
+    check(unavailable_cpu_preview ==
+              screen_share::renderer::PreviewRenderResult::TargetUnavailable,
+          "CPU preview validates BGRA data before requiring a native target");
     preview_renderer.reset();
 
     std::cout << "All capture source tests passed\n";

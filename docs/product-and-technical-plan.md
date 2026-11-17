@@ -380,7 +380,7 @@ screen_share/
 - [ ] 使用两个客户端跑通本地 LiveKit 房间。
 - [x] 实现 Windows.Graphics.Capture 屏幕和窗口 D3D11 帧捕获基线。
 - [x] 建立 D3D11 本地预览与 capture fps 统计基线。
-- [ ] 发布并接收第一条屏幕视频轨道。
+- [x] 实现屏幕轨道发布、BGRA 接收和软件内 D3D11 渲染路径。
 - [ ] 输出 capture/encode/send/receive/decode/render 六段耗时和 fps。
 - [ ] 验证 1080p60 与 1440p60 各 30 分钟。
 - [ ] 在 Intel、NVIDIA、AMD 三类 GPU 上记录结果。

@@ -2,6 +2,7 @@
 
 #include "screen_share/capture/wgc_capture_session.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 
@@ -16,6 +17,14 @@ enum class PreviewRenderResult : std::uint8_t {
     Failed,
 };
 
+struct BgraFrameView {
+    const std::uint8_t* data;
+    std::size_t data_size;
+    std::uint32_t width;
+    std::uint32_t height;
+    std::uint32_t row_pitch;
+};
+
 class D3D11PreviewRenderer final {
 public:
     explicit D3D11PreviewRenderer(std::uintptr_t target_window_handle);
@@ -28,6 +37,7 @@ public:
 
     [[nodiscard]] PreviewRenderResult render(
         const screen_share::capture::D3D11CaptureFrameView& frame) noexcept;
+    [[nodiscard]] PreviewRenderResult render(const BgraFrameView& frame) noexcept;
     void reset() noexcept;
 
 private:

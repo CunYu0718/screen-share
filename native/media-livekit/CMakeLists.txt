@@ -4,13 +4,18 @@ target_sources(
     screen_share_media_livekit
     PRIVATE
         src/d3d11_bgra_frame_reader.cpp
+        src/livekit_runtime.cpp
+        src/livekit_screen_subscriber.cpp
         src/livekit_screen_publisher.cpp
+        src/livekit_url.cpp
     PUBLIC
         FILE_SET HEADERS
         BASE_DIRS include
         FILES
             include/screen_share/media/d3d11_bgra_frame_reader.hpp
             include/screen_share/media/livekit_screen_publisher.hpp
+            include/screen_share/media/livekit_screen_subscriber.hpp
+            include/screen_share/media/livekit_url.hpp
             include/screen_share/media/raw_video_frame.hpp
 )
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "screen_share/media/livekit_url.hpp"
 #include "screen_share/media/raw_video_frame.hpp"
 
 #include <cstdint>
@@ -45,8 +46,6 @@ struct LiveKitPublishSnapshot {
     std::uint32_t width{0};
     std::uint32_t height{0};
 };
-
-[[nodiscard]] bool is_valid_livekit_url(const std::string& url) noexcept;
 
 class LiveKitScreenPublisher final {
 public:

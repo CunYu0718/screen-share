@@ -1,4 +1,5 @@
 #include "screen_share/media/livekit_screen_publisher.hpp"
+#include "screen_share/media/livekit_screen_subscriber.hpp"
 #include "screen_share/media/raw_video_frame.hpp"
 
 #include <cstdlib>
@@ -40,6 +41,16 @@ int main() {
           "HTTP URL is rejected");
     check(!screen_share::media::is_valid_livekit_url("wss://"),
           "URL without a host is rejected");
+
+    screen_share::media::LiveKitScreenSubscriber subscriber;
+    const auto invalid_subscribe = subscriber.start({});
+    check(invalid_subscribe ==
+              screen_share::media::LiveKitSubscribeStartResult::InvalidConfiguration,
+          "subscriber rejects empty connection settings without network access");
+    BgraVideoFrame received_frame;
+    check(!subscriber.take_latest(received_frame),
+          "subscriber has no frame before a room connection");
+    subscriber.stop();
 
     std::cout << "All LiveKit media adapter tests passed\n";
     return EXIT_SUCCESS;
