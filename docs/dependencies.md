@@ -9,6 +9,7 @@
 | C++ | C++20 | 客户端与原生媒体模块 | 已写入 CMake |
 | CMake | 最低 3.25；推荐 4.5.0 | 配置与构建 | 核心工程已接入 |
 | MSVC | Visual Studio 2022 x64 | Windows 基线编译器 | CI 使用 |
+| Windows | 10 1903 (Build 18362)+ / 11 | `GraphicsCaptureItem` Win32 互操作 | M1 捕获基线 |
 | Qt | 6.10.3 | 桌面 UI | CMake 与桌面 CI 已接入 |
 | LiveKit C++ SDK | v1.13.1 | WebRTC 发布、订阅与帧接口 | M1 接入 |
 | Node.js | 24.x | 会话 API | M0 后半接入 |
@@ -36,7 +37,8 @@
 
 ## 4. 官方依据
 
-- [Qt 6.12 Windows 支持配置](https://doc.qt.io/qt-6/windows.html)
+- [Qt 6.10 Windows 支持配置](https://doc.qt.io/qt-6.10/windows.html)
+- [Windows Graphics Capture Win32 互操作](https://learn.microsoft.com/windows/win32/api/windows.graphics.capture.interop/)
 - [LiveKit C++ SDK v1.13.1](https://github.com/livekit/client-sdk-cpp/releases/tag/v1.13.1)
 - [CMake v4.5.0](https://github.com/Kitware/CMake/releases/tag/v4.5.0)
 - [actions/checkout v7.0.1](https://github.com/actions/checkout/releases/tag/v7.0.1)

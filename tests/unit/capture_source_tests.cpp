@@ -1,4 +1,5 @@
 #include "screen_share/capture/capture_source.hpp"
+#include "screen_share/capture/wgc_capture_session.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -56,6 +57,14 @@ int main() {
         check(unique_ids.emplace(source.id.kind, source.id.native_handle).second,
               "enumerated source ids are unique");
     }
+
+    screen_share::capture::WgcCaptureSession capture_session;
+    const auto invalid_start = capture_session.start(
+        {CaptureSourceKind::Monitor, 0U}, [](const auto&) {});
+    check(invalid_start == screen_share::capture::WgcCaptureStartResult::InvalidSource,
+          "null native capture source is rejected without creating a GPU device");
+    check(!capture_session.running(), "invalid capture session remains stopped");
+    capture_session.stop();
 
     std::cout << "All capture source tests passed\n";
     return EXIT_SUCCESS;

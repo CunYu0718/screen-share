@@ -49,7 +49,7 @@
 
 ## 当前范围
 
-MVP 仅支持 Windows 10/11。远程控制、录制、文件传输、剪贴板、摄像头、聊天和跨平台客户端不在首版范围内。
+MVP 支持 Windows 10 1903（Build 18362）及更高版本和 Windows 11。远程控制、录制、文件传输、剪贴板、摄像头、聊天和跨平台客户端不在首版范围内。
 
 ## 构建工程基线
 
@@ -61,7 +61,7 @@ cmake --build --preset dev
 ctest --preset dev
 ```
 
-构建 Qt 桌面客户端（已支持枚举并选择屏幕/窗口）：
+构建 Qt 桌面客户端（已支持选择捕获源并接收 D3D11 GPU 帧）：
 
 ```powershell
 cmake --preset desktop

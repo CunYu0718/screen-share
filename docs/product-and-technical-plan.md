@@ -13,7 +13,7 @@
 
 ### 1.2 已确定的 MVP 边界
 
-- Windows 10/11 统一桌面客户端，包含“发起共享”和“加入观看”两种模式。
+- Windows 10 1903（Build 18362）+/11 统一桌面客户端，包含“发起共享”和“加入观看”两种模式。
 - 每个房间最多 1 名发起者和 20 名观看者，共 21 个在线参与者。
 - 支持整个显示器或指定窗口。
 - 支持 1080p60 与 2560×1440@60fps 高画质档位。
@@ -377,7 +377,7 @@ screen_share/
 
 - [x] 初始化 C++20、Qt 6、CMake 和基础 CI。
 - [ ] 集成 LiveKit C++ SDK 并跑通本地房间。
-- [ ] 实现 Windows.Graphics.Capture 屏幕和窗口捕获。
+- [x] 实现 Windows.Graphics.Capture 屏幕和窗口 D3D11 帧捕获基线。
 - [ ] 建立 D3D11 本地预览与帧时间统计。
 - [ ] 发布并接收第一条屏幕视频轨道。
 - [ ] 输出 capture/encode/send/receive/decode/render 六段耗时和 fps。
