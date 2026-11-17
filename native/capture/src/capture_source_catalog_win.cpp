@@ -116,7 +116,7 @@ BOOL CALLBACK collect_window(HWND window, LPARAM context_value) {
         }
 
         const bool minimized = IsIconic(window) != FALSE;
-        auto bounds = window_bounds(window, minimized);
+        auto bounds = to_bounds(window_bounds(window, minimized));
         if (minimized) {
             bounds.width = 0;
             bounds.height = 0;
