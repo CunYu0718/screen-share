@@ -28,6 +28,7 @@ add_subdirectory(native/diagnostics)
 
 if(WIN32)
     add_subdirectory(native/capture)
+    add_subdirectory(native/renderer)
 endif()
 
 if(SCREEN_SHARE_BUILD_DESKTOP)

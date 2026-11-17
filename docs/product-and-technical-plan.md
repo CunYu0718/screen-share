@@ -378,7 +378,7 @@ screen_share/
 - [x] 初始化 C++20、Qt 6、CMake 和基础 CI。
 - [ ] 集成 LiveKit C++ SDK 并跑通本地房间。
 - [x] 实现 Windows.Graphics.Capture 屏幕和窗口 D3D11 帧捕获基线。
-- [ ] 建立 D3D11 本地预览与帧时间统计。
+- [x] 建立 D3D11 本地预览与 capture fps 统计基线。
 - [ ] 发布并接收第一条屏幕视频轨道。
 - [ ] 输出 capture/encode/send/receive/decode/render 六段耗时和 fps。
 - [ ] 验证 1080p60 与 1440p60 各 30 分钟。

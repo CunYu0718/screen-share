@@ -1,13 +1,18 @@
 #include "screen_share/capture/capture_source.hpp"
 #include "screen_share/capture/wgc_capture_session.hpp"
 #include "screen_share/core/session_policy.hpp"
+#include "screen_share/diagnostics/frame_pipeline_stats.hpp"
+#include "screen_share/diagnostics/frame_rate_estimator.hpp"
+#include "screen_share/renderer/d3d11_preview_renderer.hpp"
 
 #include <QApplication>
 #include <QComboBox>
 #include <QGroupBox>
 #include <QLabel>
 #include <QMainWindow>
+#include <QPaintEngine>
 #include <QPushButton>
+#include <QSizePolicy>
 #include <QString>
 #include <QTimer>
 #include <QVariant>
@@ -37,10 +42,23 @@ public:
 };
 
 struct LatestFrameState {
-    std::atomic<std::uint64_t> frame_count{0};
     std::atomic<std::uint32_t> width{0};
     std::atomic<std::uint32_t> height{0};
-    std::atomic<std::int64_t> timestamp_100ns{0};
+};
+
+class D3DPreviewWidget final : public QWidget {
+public:
+    explicit D3DPreviewWidget(QWidget* parent) : QWidget(parent) {
+        setAttribute(Qt::WA_NativeWindow);
+        setAttribute(Qt::WA_PaintOnScreen);
+        setAttribute(Qt::WA_OpaquePaintEvent);
+        setMinimumSize(384, 216);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    }
+
+    [[nodiscard]] QPaintEngine* paintEngine() const override {
+        return nullptr;
+    }
 };
 
 [[nodiscard]] QString source_label(const screen_share::capture::CaptureSource& source) {
@@ -117,7 +135,7 @@ int main(int argc, char* argv[]) {
 
     QMainWindow window;
     window.setWindowTitle(QStringLiteral("Screen Share · M1"));
-    window.resize(640, 480);
+    window.resize(800, 720);
 
     auto* central_widget = new QWidget(&window);
     auto* layout = new QVBoxLayout(central_widget);
@@ -148,12 +166,24 @@ int main(int argc, char* argv[]) {
     source_layout->addWidget(source_message);
     source_layout->addWidget(refresh_button);
 
-    auto* status = new QLabel(QStringLiteral("M1-02：请选择屏幕或窗口"), central_widget);
+    auto* preview_group = new QGroupBox(QStringLiteral("本地 GPU 预览"), central_widget);
+    auto* preview_layout = new QVBoxLayout(preview_group);
+    auto* preview_widget = new D3DPreviewWidget(preview_group);
+    preview_layout->addWidget(preview_widget);
+
+    auto* status = new QLabel(QStringLiteral("M1-03：请选择屏幕或窗口"), central_widget);
     status->setWordWrap(true);
     auto* host_button = new QPushButton(QStringLiteral("开始捕获"), central_widget);
     auto* join_button = new QPushButton(QStringLiteral("加入观看"), central_widget);
     const auto capture_session = std::make_shared<screen_share::capture::WgcCaptureSession>();
     const auto latest_frame = std::make_shared<LatestFrameState>();
+    const auto frame_rate = std::make_shared<screen_share::diagnostics::FrameRateEstimator>();
+    const auto pipeline_stats =
+        std::make_shared<screen_share::diagnostics::FramePipelineStats>();
+    const auto preview_handle = reinterpret_cast<std::uintptr_t>(
+        reinterpret_cast<void*>(preview_widget->winId()));
+    const auto preview_renderer =
+        std::make_shared<screen_share::renderer::D3D11PreviewRenderer>(preview_handle);
     const auto capture_active_in_ui = std::make_shared<bool>(false);
 
     const auto refresh_sources = [source_combo, source_message]() {
@@ -189,6 +219,9 @@ int main(int argc, char* argv[]) {
         status,
         [capture_session,
          latest_frame,
+         frame_rate,
+         pipeline_stats,
+         preview_renderer,
          capture_active_in_ui,
          source_combo,
          refresh_button,
@@ -196,6 +229,7 @@ int main(int argc, char* argv[]) {
          status]() {
             if (*capture_active_in_ui) {
                 capture_session->stop();
+                preview_renderer->reset();
                 *capture_active_in_ui = false;
                 source_combo->setEnabled(source_combo->count() > 0);
                 refresh_button->setEnabled(true);
@@ -216,18 +250,24 @@ int main(int argc, char* argv[]) {
                     source_combo->currentData(Qt::UserRole).toULongLong()),
             };
 
-            latest_frame->frame_count.store(0, std::memory_order_relaxed);
             latest_frame->width.store(0, std::memory_order_relaxed);
             latest_frame->height.store(0, std::memory_order_relaxed);
-            latest_frame->timestamp_100ns.store(0, std::memory_order_relaxed);
+            frame_rate->reset();
+            pipeline_stats->reset();
+            preview_renderer->reset();
 
             const auto result = capture_session->start(
-                source, [latest_frame](const screen_share::capture::D3D11CaptureFrameView& frame) {
+                source,
+                [latest_frame, frame_rate, pipeline_stats, preview_renderer](
+                    const screen_share::capture::D3D11CaptureFrameView& frame) {
                     latest_frame->width.store(frame.width, std::memory_order_relaxed);
                     latest_frame->height.store(frame.height, std::memory_order_relaxed);
-                    latest_frame->timestamp_100ns.store(
-                        frame.system_relative_time_100ns, std::memory_order_relaxed);
-                    latest_frame->frame_count.fetch_add(1, std::memory_order_relaxed);
+                    frame_rate->record(frame.system_relative_time_100ns);
+                    pipeline_stats->record(screen_share::diagnostics::PipelineStage::Capture);
+                    if (preview_renderer->render(frame) ==
+                        screen_share::renderer::PreviewRenderResult::Rendered) {
+                        pipeline_stats->record(screen_share::diagnostics::PipelineStage::Render);
+                    }
                 });
             status->setText(capture_start_message(result));
 
@@ -243,21 +283,24 @@ int main(int argc, char* argv[]) {
     });
 
     auto* frame_status_timer = new QTimer(central_widget);
-    frame_status_timer->setInterval(250);
+    frame_status_timer->setInterval(500);
     QObject::connect(
         frame_status_timer,
         &QTimer::timeout,
         status,
         [capture_session,
          latest_frame,
+         frame_rate,
+         pipeline_stats,
+         preview_renderer,
          capture_active_in_ui,
          source_combo,
          refresh_button,
          host_button,
-         status,
-         last_frame_count = std::uint64_t{0}]() mutable {
+         status]() {
             if (*capture_active_in_ui && !capture_session->running()) {
                 capture_session->stop();
+                preview_renderer->reset();
                 *capture_active_in_ui = false;
                 source_combo->setEnabled(source_combo->count() > 0);
                 refresh_button->setEnabled(true);
@@ -266,19 +309,26 @@ int main(int argc, char* argv[]) {
                 return;
             }
 
-            const auto frame_count =
-                latest_frame->frame_count.load(std::memory_order_relaxed);
-            if (!*capture_active_in_ui || frame_count == 0 || frame_count == last_frame_count) {
+            if (!*capture_active_in_ui) {
                 return;
             }
 
-            last_frame_count = frame_count;
+            const auto rate_sample = frame_rate->sample();
+            const auto pipeline_snapshot = pipeline_stats->snapshot();
+            if (rate_sample.total_frames == 0) {
+                return;
+            }
+
             const auto width = latest_frame->width.load(std::memory_order_relaxed);
             const auto height = latest_frame->height.load(std::memory_order_relaxed);
-            status->setText(QStringLiteral("正在捕获 %1×%2 · 已收到 %3 帧 D3D11 纹理")
+            const auto rendered_frames = pipeline_snapshot.count(
+                screen_share::diagnostics::PipelineStage::Render);
+            status->setText(QStringLiteral("正在捕获 %1×%2 · capture %3 fps · 预览 %4/%5 帧")
                                 .arg(width)
                                 .arg(height)
-                                .arg(static_cast<qulonglong>(frame_count)));
+                                .arg(rate_sample.frames_per_second, 0, 'f', 1)
+                                .arg(static_cast<qulonglong>(rendered_frames))
+                                .arg(static_cast<qulonglong>(rate_sample.total_frames)));
         });
     frame_status_timer->start();
 
@@ -286,6 +336,7 @@ int main(int argc, char* argv[]) {
     layout->addWidget(summary);
     layout->addSpacing(12);
     layout->addWidget(source_group);
+    layout->addWidget(preview_group, 1);
     layout->addWidget(host_button);
     layout->addWidget(join_button);
     layout->addStretch();
@@ -297,5 +348,6 @@ int main(int argc, char* argv[]) {
 
     const auto exit_code = application.exec();
     capture_session->stop();
+    preview_renderer->reset();
     return exit_code;
 }

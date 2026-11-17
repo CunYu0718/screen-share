@@ -1,5 +1,6 @@
 #include "screen_share/core/quality_profile.hpp"
 #include "screen_share/core/session_policy.hpp"
+#include "screen_share/diagnostics/frame_rate_estimator.hpp"
 #include "screen_share/diagnostics/frame_pipeline_stats.hpp"
 
 #include <cstdlib>
@@ -22,6 +23,7 @@ int main() {
     using screen_share::core::QualityTier;
     using screen_share::core::ViewerAdmission;
     using screen_share::diagnostics::FramePipelineStats;
+    using screen_share::diagnostics::FrameRateEstimator;
     using screen_share::diagnostics::PipelineStage;
 
     static_assert(screen_share::core::maximum_viewer_count == 20);
@@ -54,6 +56,18 @@ int main() {
 
     stats.reset();
     check(stats.snapshot().count(PipelineStage::Capture) == 0, "counter reset");
+
+    FrameRateEstimator frame_rate;
+    frame_rate.record(0);
+    frame_rate.record(166'667);
+    frame_rate.record(333'334);
+    const auto rate_sample = frame_rate.sample();
+    check(rate_sample.total_frames == 3, "frame rate sample tracks total frames");
+    check(rate_sample.frames_per_second > 59.9 && rate_sample.frames_per_second < 60.1,
+          "frame rate sample uses QPC time intervals");
+    check(frame_rate.sample().frames_per_second == 0.0, "idle sample reports zero fps");
+    frame_rate.reset();
+    check(frame_rate.sample().total_frames == 0, "frame rate reset clears totals");
 
     std::cout << "All core tests passed\n";
     return EXIT_SUCCESS;

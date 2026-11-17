@@ -18,6 +18,7 @@ if(TARGET ScreenShare::Capture)
         screen_share_capture_tests
         PRIVATE
             ScreenShare::Capture
+            ScreenShare::Renderer
             screen_share_project_options
             screen_share_project_warnings
     )

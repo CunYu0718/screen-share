@@ -10,6 +10,7 @@ target_link_libraries(
         ScreenShare::Capture
         ScreenShare::Core
         ScreenShare::Diagnostics
+        ScreenShare::Renderer
         screen_share_project_options
         screen_share_project_warnings
 )

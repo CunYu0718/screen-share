@@ -1,5 +1,6 @@
 #include "screen_share/capture/capture_source.hpp"
 #include "screen_share/capture/wgc_capture_session.hpp"
+#include "screen_share/renderer/d3d11_preview_renderer.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -65,6 +66,17 @@ int main() {
           "null native capture source is rejected without creating a GPU device");
     check(!capture_session.running(), "invalid capture session remains stopped");
     capture_session.stop();
+
+    screen_share::renderer::D3D11PreviewRenderer preview_renderer(0U);
+    const auto invalid_preview = preview_renderer.render({
+        .texture = nullptr,
+        .width = 0,
+        .height = 0,
+        .system_relative_time_100ns = 0,
+    });
+    check(invalid_preview == screen_share::renderer::PreviewRenderResult::InvalidFrame,
+          "preview rejects an empty frame without creating GPU resources");
+    preview_renderer.reset();
 
     std::cout << "All capture source tests passed\n";
     return EXIT_SUCCESS;
