@@ -12,6 +12,7 @@ Before running:
 
 Validation:
 - Run one host and one viewer on separate Windows machines.
+- Enter and confirm the measured SFU version, bandwidth, RTT, and baseline packet loss in both clients before recording.
 - Follow docs/hardware-validation.md from the same repository revision.
 - Endpoint reports are written to Documents/ScreenShare/validation.
 - The client does not intentionally store screen frames, credentials, URLs, window titles, or participant identifiers in those reports.

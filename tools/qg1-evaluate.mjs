@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
-const endpointSchema = "screen-share.qg1.endpoint-report.v1";
+const endpointSchema = "screen-share.qg1.endpoint-report.v2";
 const combinedSchema = "screen-share.qg1.combined-report.v1";
 
 function requireEndpoint(report, role) {
@@ -30,6 +30,30 @@ function mediaResolutionAtLeast(report, minimumWidth, minimumHeight) {
   );
 }
 
+function hardwareMetadataComplete(report) {
+  const gpu = report.system?.gpu;
+  return (
+    typeof report.system?.os === "string" &&
+    report.system.os.length > 0 &&
+    typeof gpu?.description === "string" &&
+    gpu.description.length > 0 &&
+    typeof gpu?.driver_version === "string" &&
+    gpu.driver_version.length > 0
+  );
+}
+
+function networkBaseline(report) {
+  return report.environment?.network_baseline ?? {};
+}
+
+function numberAtLeast(value, minimum) {
+  return Number.isFinite(value) && value >= minimum;
+}
+
+function numberBetween(value, minimum, maximum) {
+  return Number.isFinite(value) && value >= minimum && value <= maximum;
+}
+
 export function evaluateReports(host, viewer, manualEvidence) {
   requireEndpoint(host, "host");
   requireEndpoint(viewer, "viewer");
@@ -40,6 +64,36 @@ export function evaluateReports(host, viewer, manualEvidence) {
   }
 
   const checks = {
+    matching_client_build:
+      typeof host.build_commit === "string" &&
+      host.build_commit !== "unknown" &&
+      host.build_commit === viewer.build_commit,
+    matching_client_version:
+      typeof host.app_version === "string" &&
+      host.app_version.length > 0 &&
+      host.app_version === viewer.app_version,
+    matching_livekit_sdk_version:
+      typeof host.livekit_sdk_version === "string" &&
+      host.livekit_sdk_version !== "unknown" &&
+      host.livekit_sdk_version === viewer.livekit_sdk_version,
+    matching_sfu_version:
+      typeof host.environment?.sfu_version === "string" &&
+      host.environment.sfu_version.length > 0 &&
+      host.environment.sfu_version === viewer.environment?.sfu_version,
+    host_hardware_metadata_complete: hardwareMetadataComplete(host),
+    viewer_hardware_metadata_complete: hardwareMetadataComplete(viewer),
+    host_upstream_at_least_30_mbps: numberAtLeast(
+      networkBaseline(host).upstream_mbps,
+      30,
+    ),
+    viewer_downstream_at_least_25_mbps:
+      numberAtLeast(networkBaseline(viewer).downstream_mbps, 25),
+    host_rtt_at_most_80_ms: numberBetween(networkBaseline(host).rtt_ms, 0, 80),
+    viewer_rtt_at_most_80_ms: numberBetween(networkBaseline(viewer).rtt_ms, 0, 80),
+    host_baseline_packet_loss_at_most_1_percent:
+      numberBetween(networkBaseline(host).packet_loss_ratio, 0, 0.01),
+    viewer_baseline_packet_loss_at_most_1_percent:
+      numberBetween(networkBaseline(viewer).packet_loss_ratio, 0, 0.01),
     host_duration_30_minutes: booleanCheck(host, "duration_30_minutes"),
     viewer_duration_30_minutes: booleanCheck(viewer, "duration_30_minutes"),
     host_pipeline_metrics_complete: booleanCheck(
@@ -90,6 +144,16 @@ export function evaluateReports(host, viewer, manualEvidence) {
     schema: combinedSchema,
     evaluated_at_utc: new Date().toISOString(),
     qg1_status: Object.values(checks).every(Boolean) ? "pass" : "fail",
+    client_build: {
+      version: host.app_version,
+      commit: host.build_commit,
+      livekit_sdk_version: host.livekit_sdk_version,
+    },
+    sfu_version: host.environment?.sfu_version,
+    endpoint_hardware: {
+      host: host.system?.gpu,
+      viewer: viewer.system?.gpu,
+    },
     measured_latency_p95_ms: latencyP95Ms,
     endpoint_started_at_utc: {
       host: host.started_at_utc,

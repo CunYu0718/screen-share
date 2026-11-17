@@ -10,7 +10,9 @@
 #include "validation_report.hpp"
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
+#include <QDoubleValidator>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QLabel>
@@ -218,11 +220,11 @@ int main(int argc, char* argv[]) {
     QApplication application(argc, argv);
     QApplication::setApplicationDisplayName(QStringLiteral("Screen Share"));
     QApplication::setOrganizationName(QStringLiteral("Screen Share Contributors"));
-    QApplication::setApplicationVersion(QStringLiteral("0.1.0"));
+    QApplication::setApplicationVersion(QString::fromLatin1(SCREEN_SHARE_PROJECT_VERSION));
 
     QMainWindow window;
     window.setWindowTitle(QStringLiteral("Screen Share · M1"));
-    window.resize(820, 860);
+    window.resize(820, 1040);
 
     auto* central_widget = new QWidget(&window);
     auto* layout = new QVBoxLayout(central_widget);
@@ -271,6 +273,35 @@ int main(int argc, char* argv[]) {
     publish_layout->addRow(QStringLiteral("访问令牌"), access_token);
     publish_layout->addRow(QStringLiteral("发起者身份"), publisher_identity);
     publish_layout->addRow(publish_button);
+
+    auto* validation_environment_group =
+        new QGroupBox(QStringLiteral("实机验收环境"), central_widget);
+    auto* validation_environment_layout = new QFormLayout(validation_environment_group);
+    auto* sfu_version =
+        new QLineEdit(QStringLiteral("1.13.11"), validation_environment_group);
+    auto* upstream_mbps = new QLineEdit(validation_environment_group);
+    auto* downstream_mbps = new QLineEdit(validation_environment_group);
+    auto* rtt_milliseconds = new QLineEdit(validation_environment_group);
+    auto* baseline_packet_loss_percent = new QLineEdit(validation_environment_group);
+    upstream_mbps->setPlaceholderText(QStringLiteral("例如 100"));
+    downstream_mbps->setPlaceholderText(QStringLiteral("例如 100"));
+    rtt_milliseconds->setPlaceholderText(QStringLiteral("例如 12.5"));
+    baseline_packet_loss_percent->setPlaceholderText(QStringLiteral("例如 0 或 0.2"));
+    for (auto* input :
+         {upstream_mbps, downstream_mbps, rtt_milliseconds, baseline_packet_loss_percent}) {
+        auto* validator = new QDoubleValidator(0.0, 100'000.0, 3, input);
+        validator->setNotation(QDoubleValidator::StandardNotation);
+        input->setValidator(validator);
+    }
+    auto* network_baseline_confirmed = new QCheckBox(
+        QStringLiteral("以上网络数据已在本次运行前实测"), validation_environment_group);
+    validation_environment_layout->addRow(QStringLiteral("LiveKit SFU 版本"), sfu_version);
+    validation_environment_layout->addRow(QStringLiteral("上行 Mbps"), upstream_mbps);
+    validation_environment_layout->addRow(QStringLiteral("下行 Mbps"), downstream_mbps);
+    validation_environment_layout->addRow(QStringLiteral("RTT ms"), rtt_milliseconds);
+    validation_environment_layout->addRow(QStringLiteral("基线丢包 %"),
+                                          baseline_packet_loss_percent);
+    validation_environment_layout->addRow(network_baseline_confirmed);
 
     auto* status = new QLabel(QStringLiteral("M1-07：请选择屏幕或窗口"), central_widget);
     status->setWordWrap(true);
@@ -582,6 +613,12 @@ int main(int argc, char* argv[]) {
          screen_subscriber,
          validation_button,
          validation_status,
+         sfu_version,
+         upstream_mbps,
+         downstream_mbps,
+         rtt_milliseconds,
+         baseline_packet_loss_percent,
+         network_baseline_confirmed,
          show_validation_result]() {
             if (validation_recorder->active()) {
                 show_validation_result(validation_recorder->stop_and_write());
@@ -589,12 +626,41 @@ int main(int argc, char* argv[]) {
             }
 
             const auto subscribe_snapshot = screen_subscriber->snapshot();
+            bool upstream_valid = false;
+            bool downstream_valid = false;
+            bool rtt_valid = false;
+            bool loss_valid = false;
+            const double measured_upstream = upstream_mbps->text().trimmed().toDouble(
+                &upstream_valid);
+            const double measured_downstream = downstream_mbps->text().trimmed().toDouble(
+                &downstream_valid);
+            const double measured_rtt = rtt_milliseconds->text().trimmed().toDouble(&rtt_valid);
+            const double measured_loss_percent =
+                baseline_packet_loss_percent->text().trimmed().toDouble(&loss_valid);
+            if (sfu_version->text().trimmed().isEmpty() || !upstream_valid ||
+                !downstream_valid || !rtt_valid || !loss_valid || measured_upstream <= 0.0 ||
+                measured_downstream <= 0.0 || measured_rtt < 0.0 ||
+                measured_loss_percent < 0.0 || measured_loss_percent > 100.0 ||
+                !network_baseline_confirmed->isChecked()) {
+                validation_status->setText(
+                    QStringLiteral("请填写并确认本次实测的 SFU 版本、上/下行、RTT 和基线丢包。"));
+                return;
+            }
+            const screen_share::desktop::ValidationEnvironment environment{
+                .sfu_version = sfu_version->text().trimmed(),
+                .upstream_mbps = measured_upstream,
+                .downstream_mbps = measured_downstream,
+                .rtt_milliseconds = measured_rtt,
+                .baseline_packet_loss_ratio = measured_loss_percent / 100.0,
+            };
             if (subscribe_snapshot.state ==
                 screen_share::media::LiveKitSubscribeState::Watching) {
-                validation_recorder->start(screen_share::desktop::ValidationRole::Viewer);
+                validation_recorder->start(screen_share::desktop::ValidationRole::Viewer,
+                                           environment);
             } else if (screen_publisher->snapshot().state ==
                        screen_share::media::LiveKitPublishState::Publishing) {
-                validation_recorder->start(screen_share::desktop::ValidationRole::Host);
+                validation_recorder->start(screen_share::desktop::ValidationRole::Host,
+                                           environment);
             } else {
                 validation_status->setText(
                     QStringLiteral("请先成功发布或加入观看，再开始验收记录。"));
@@ -906,6 +972,7 @@ int main(int argc, char* argv[]) {
     layout->addWidget(source_group);
     layout->addWidget(preview_group, 1);
     layout->addWidget(publish_group);
+    layout->addWidget(validation_environment_group);
     layout->addWidget(host_button);
     layout->addWidget(join_button);
     layout->addWidget(validation_button);

@@ -2,6 +2,14 @@
 #define NOMINMAX
 #endif
 
+#ifndef SCREEN_SHARE_BUILD_COMMIT
+#define SCREEN_SHARE_BUILD_COMMIT "unknown"
+#endif
+
+#ifndef SCREEN_SHARE_LIVEKIT_SDK_VERSION
+#define SCREEN_SHARE_LIVEKIT_SDK_VERSION "unknown"
+#endif
+
 #include "validation_report.hpp"
 
 #include <QCoreApplication>
@@ -14,17 +22,98 @@
 #include <QStandardPaths>
 #include <QSysInfo>
 
+#include <d3d11.h>
+#include <dxgi.h>
 #include <Windows.h>
 #include <Psapi.h>
+#include <wrl/client.h>
 
 #include <algorithm>
 #include <array>
 #include <string_view>
+#include <utility>
 
 namespace screen_share::desktop {
 namespace {
 
 constexpr std::int64_t expected_sample_interval_milliseconds = 500;
+
+struct GraphicsAdapterInfo {
+    QString description;
+    QString driver_version;
+    QString d3d_feature_level;
+    QString error;
+    std::uint32_t vendor_id{0};
+    std::uint32_t device_id{0};
+    std::uint64_t dedicated_video_memory_bytes{0};
+};
+
+[[nodiscard]] GraphicsAdapterInfo graphics_adapter_info() noexcept {
+    GraphicsAdapterInfo result;
+    try {
+        Microsoft::WRL::ComPtr<ID3D11Device> device;
+        D3D_FEATURE_LEVEL feature_level{};
+        const HRESULT create_result = D3D11CreateDevice(
+            nullptr,
+            D3D_DRIVER_TYPE_HARDWARE,
+            nullptr,
+            D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+            nullptr,
+            0,
+            D3D11_SDK_VERSION,
+            device.GetAddressOf(),
+            &feature_level,
+            nullptr);
+        if (FAILED(create_result) || !device) {
+            result.error = QStringLiteral("D3D11CreateDevice failed: 0x%1")
+                               .arg(static_cast<qulonglong>(
+                                        static_cast<std::uint32_t>(create_result)),
+                                    8,
+                                    16,
+                                    QChar('0'));
+            return result;
+        }
+
+        Microsoft::WRL::ComPtr<IDXGIDevice> dxgi_device;
+        Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
+        if (FAILED(device.As(&dxgi_device)) ||
+            FAILED(dxgi_device->GetAdapter(adapter.GetAddressOf())) || !adapter) {
+            result.error = QStringLiteral("Unable to resolve the DXGI adapter");
+            return result;
+        }
+
+        DXGI_ADAPTER_DESC description{};
+        if (FAILED(adapter->GetDesc(&description))) {
+            result.error = QStringLiteral("IDXGIAdapter::GetDesc failed");
+            return result;
+        }
+
+        result.description = QString::fromWCharArray(description.Description);
+        result.vendor_id = description.VendorId;
+        result.device_id = description.DeviceId;
+        result.dedicated_video_memory_bytes =
+            static_cast<std::uint64_t>(description.DedicatedVideoMemory);
+        result.d3d_feature_level =
+            QStringLiteral("0x%1").arg(static_cast<qulonglong>(feature_level), 4, 16, QChar('0'));
+
+        LARGE_INTEGER driver_version{};
+        if (SUCCEEDED(
+                adapter->CheckInterfaceSupport(__uuidof(IDXGIDevice), &driver_version))) {
+            const auto high = static_cast<std::uint32_t>(driver_version.HighPart);
+            const auto low = static_cast<std::uint32_t>(driver_version.LowPart);
+            result.driver_version = QStringLiteral("%1.%2.%3.%4")
+                                        .arg(static_cast<qulonglong>(HIWORD(high)))
+                                        .arg(static_cast<qulonglong>(LOWORD(high)))
+                                        .arg(static_cast<qulonglong>(HIWORD(low)))
+                                        .arg(static_cast<qulonglong>(LOWORD(low)));
+        } else {
+            result.error = QStringLiteral("DXGI driver version unavailable");
+        }
+    } catch (...) {
+        result.error = QStringLiteral("Unexpected graphics adapter query failure");
+    }
+    return result;
+}
 
 [[nodiscard]] std::uint64_t process_working_set_bytes() noexcept {
     PROCESS_MEMORY_COUNTERS_EX counters{};
@@ -65,8 +154,10 @@ QString validation_role_name(const ValidationRole role) {
     return QStringLiteral("unknown");
 }
 
-void ValidationReportRecorder::start(const ValidationRole role) {
+void ValidationReportRecorder::start(const ValidationRole role,
+                                     ValidationEnvironment environment) {
     role_ = role;
+    environment_ = std::move(environment);
     active_ = true;
     started_steady_ = std::chrono::steady_clock::now();
     started_at_utc_ = QDateTime::currentDateTimeUtc();
@@ -217,6 +308,14 @@ ValidationRecordResult ValidationReportRecorder::write_report(
                   maximum_rates[send_index] > 0.0
             : maximum_rates[receive_index] > 0.0 && maximum_rates[decode_index] > 0.0 &&
                   maximum_rates[render_index] > 0.0;
+    const auto adapter = graphics_adapter_info();
+    const bool hardware_metadata_complete = !adapter.description.isEmpty() &&
+                                            !adapter.driver_version.isEmpty();
+    const bool environment_metadata_complete = !environment_.sfu_version.trimmed().isEmpty() &&
+                                               environment_.upstream_mbps > 0.0 &&
+                                               environment_.downstream_mbps > 0.0 &&
+                                               environment_.rtt_milliseconds >= 0.0 &&
+                                               environment_.baseline_packet_loss_ratio >= 0.0;
 
     QJsonObject checks;
     checks.insert(QStringLiteral("duration_30_minutes"),
@@ -227,6 +326,9 @@ ValidationRecordResult ValidationReportRecorder::write_report(
                   baseline_memory > 0.0 && memory_growth_ratio <= 0.10);
     checks.insert(QStringLiteral("media_active_for_all_samples"),
                   !samples_.empty() && active_samples == samples_.size());
+    checks.insert(QStringLiteral("hardware_metadata_complete"), hardware_metadata_complete);
+    checks.insert(QStringLiteral("environment_metadata_complete"),
+                  environment_metadata_complete);
     if (role_ == ValidationRole::Viewer) {
         checks.insert(QStringLiteral("average_render_at_least_55_fps"),
                       average_rates[render_index] >= 55.0);
@@ -285,20 +387,47 @@ ValidationRecordResult ValidationReportRecorder::write_report(
                   QSysInfo::currentCpuArchitecture());
     system.insert(QStringLiteral("build_cpu_architecture"), QSysInfo::buildCpuArchitecture());
     system.insert(QStringLiteral("qt_version"), QString::fromLatin1(qVersion()));
+    QJsonObject gpu;
+    gpu.insert(QStringLiteral("description"), adapter.description);
+    gpu.insert(QStringLiteral("driver_version"), adapter.driver_version);
+    gpu.insert(QStringLiteral("d3d_feature_level"), adapter.d3d_feature_level);
+    gpu.insert(QStringLiteral("vendor_id"), static_cast<qint64>(adapter.vendor_id));
+    gpu.insert(QStringLiteral("device_id"), static_cast<qint64>(adapter.device_id));
+    gpu.insert(QStringLiteral("dedicated_video_memory_bytes"),
+               static_cast<qint64>(adapter.dedicated_video_memory_bytes));
+    gpu.insert(QStringLiteral("query_error"), adapter.error);
+    system.insert(QStringLiteral("gpu"), gpu);
+
+    QJsonObject network_baseline;
+    network_baseline.insert(QStringLiteral("upstream_mbps"), environment_.upstream_mbps);
+    network_baseline.insert(QStringLiteral("downstream_mbps"),
+                            environment_.downstream_mbps);
+    network_baseline.insert(QStringLiteral("rtt_ms"), environment_.rtt_milliseconds);
+    network_baseline.insert(QStringLiteral("packet_loss_ratio"),
+                            environment_.baseline_packet_loss_ratio);
+
+    QJsonObject environment;
+    environment.insert(QStringLiteral("sfu_version"), environment_.sfu_version.trimmed());
+    environment.insert(QStringLiteral("network_baseline"), network_baseline);
 
     QJsonObject root;
     root.insert(QStringLiteral("schema"),
-                QStringLiteral("screen-share.qg1.endpoint-report.v1"));
+                QStringLiteral("screen-share.qg1.endpoint-report.v2"));
     root.insert(QStringLiteral("contains_screen_content"), false);
     root.insert(QStringLiteral("contains_credentials"), false);
     root.insert(QStringLiteral("endpoint_role"), validation_role_name(role_));
     root.insert(QStringLiteral("app_version"), QCoreApplication::applicationVersion());
+    root.insert(QStringLiteral("build_commit"),
+                QString::fromLatin1(SCREEN_SHARE_BUILD_COMMIT));
+    root.insert(QStringLiteral("livekit_sdk_version"),
+                QString::fromLatin1(SCREEN_SHARE_LIVEKIT_SDK_VERSION));
     root.insert(QStringLiteral("started_at_utc"), started_at_utc_.toString(Qt::ISODateWithMs));
     root.insert(QStringLiteral("finished_at_utc"),
                 finished_at_utc.toString(Qt::ISODateWithMs));
     root.insert(QStringLiteral("target_duration_seconds"),
                 target_duration_milliseconds / 1000);
     root.insert(QStringLiteral("system"), system);
+    root.insert(QStringLiteral("environment"), environment);
     root.insert(QStringLiteral("summary"), summary);
     root.insert(QStringLiteral("samples"), sample_array);
 

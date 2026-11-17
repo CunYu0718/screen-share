@@ -17,6 +17,14 @@ enum class ValidationRole : std::uint8_t {
     Viewer,
 };
 
+struct ValidationEnvironment {
+    QString sfu_version;
+    double upstream_mbps{0.0};
+    double downstream_mbps{0.0};
+    double rtt_milliseconds{0.0};
+    double baseline_packet_loss_ratio{0.0};
+};
+
 struct ValidationSampleInput {
     diagnostics::FramePipelineRateSample rates{};
     diagnostics::FramePipelineSnapshot pipeline{};
@@ -38,7 +46,7 @@ class ValidationReportRecorder final {
 public:
     static constexpr std::int64_t target_duration_milliseconds = 30 * 60 * 1000;
 
-    void start(ValidationRole role);
+    void start(ValidationRole role, ValidationEnvironment environment);
     [[nodiscard]] ValidationRecordResult record(const ValidationSampleInput& input);
     [[nodiscard]] ValidationRecordResult stop_and_write();
 
@@ -66,6 +74,7 @@ private:
     bool active_{false};
     std::chrono::steady_clock::time_point started_steady_{};
     QDateTime started_at_utc_;
+    ValidationEnvironment environment_;
     std::vector<Sample> samples_;
 };
 
