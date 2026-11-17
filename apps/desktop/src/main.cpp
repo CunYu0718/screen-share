@@ -7,6 +7,7 @@
 #include "screen_share/media/livekit_screen_publisher.hpp"
 #include "screen_share/media/livekit_screen_subscriber.hpp"
 #include "screen_share/renderer/d3d11_preview_renderer.hpp"
+#include "validation_report.hpp"
 
 #include <QApplication>
 #include <QComboBox>
@@ -217,6 +218,7 @@ int main(int argc, char* argv[]) {
     QApplication application(argc, argv);
     QApplication::setApplicationDisplayName(QStringLiteral("Screen Share"));
     QApplication::setOrganizationName(QStringLiteral("Screen Share Contributors"));
+    QApplication::setApplicationVersion(QStringLiteral("0.1.0"));
 
     QMainWindow window;
     window.setWindowTitle(QStringLiteral("Screen Share · M1"));
@@ -270,10 +272,16 @@ int main(int argc, char* argv[]) {
     publish_layout->addRow(QStringLiteral("发起者身份"), publisher_identity);
     publish_layout->addRow(publish_button);
 
-    auto* status = new QLabel(QStringLiteral("M1-06：请选择屏幕或窗口"), central_widget);
+    auto* status = new QLabel(QStringLiteral("M1-07：请选择屏幕或窗口"), central_widget);
     status->setWordWrap(true);
     auto* host_button = new QPushButton(QStringLiteral("开始捕获"), central_widget);
     auto* join_button = new QPushButton(QStringLiteral("加入观看"), central_widget);
+    auto* validation_button =
+        new QPushButton(QStringLiteral("开始 30 分钟验收记录"), central_widget);
+    auto* validation_status = new QLabel(
+        QStringLiteral("M1-07：尚未记录；报告不包含令牌、窗口标题或屏幕内容。"),
+        central_widget);
+    validation_status->setWordWrap(true);
     const auto capture_session = std::make_shared<screen_share::capture::WgcCaptureSession>();
     const auto latest_frame = std::make_shared<LatestFrameState>();
     const auto frame_rate = std::make_shared<screen_share::diagnostics::FrameRateEstimator>();
@@ -293,6 +301,43 @@ int main(int argc, char* argv[]) {
         std::make_shared<screen_share::media::LiveKitScreenSubscriber>();
     const auto readback_failures = std::make_shared<std::atomic<std::uint64_t>>(0);
     const auto capture_active_in_ui = std::make_shared<bool>(false);
+    const auto validation_recorder =
+        std::make_shared<screen_share::desktop::ValidationReportRecorder>();
+
+    const auto show_validation_result =
+        [validation_recorder, validation_button, validation_status](
+            const screen_share::desktop::ValidationRecordResult& result) {
+            if (result.completed) {
+                validation_button->setText(QStringLiteral("开始 30 分钟验收记录"));
+                if (!result.error_message.isEmpty()) {
+                    validation_status->setText(result.error_message);
+                } else {
+                    validation_status->setText(
+                        QStringLiteral("验收端点报告已保存：%1").arg(result.report_path));
+                }
+                return;
+            }
+            if (!validation_recorder->active()) {
+                return;
+            }
+            const auto elapsed_seconds = validation_recorder->elapsed_milliseconds() / 1000;
+            validation_status->setText(
+                QStringLiteral("正在记录 %1 端 · %2:%3 / 30:00")
+                    .arg(screen_share::desktop::validation_role_name(
+                        validation_recorder->role()))
+                    .arg(elapsed_seconds / 60, 2, 10, QChar('0'))
+                    .arg(elapsed_seconds % 60, 2, 10, QChar('0')));
+        };
+
+    const auto record_validation =
+        [validation_recorder, show_validation_result](
+            const screen_share::desktop::ValidationRole role,
+            const screen_share::desktop::ValidationSampleInput& input) {
+            if (!validation_recorder->active() || validation_recorder->role() != role) {
+                return;
+            }
+            show_validation_result(validation_recorder->record(input));
+        };
 
     const auto refresh_sources = [source_combo, source_message]() {
         source_combo->clear();
@@ -528,6 +573,37 @@ int main(int argc, char* argv[]) {
                 join_button->setText(QStringLiteral("停止观看"));
             }
         });
+    QObject::connect(
+        validation_button,
+        &QPushButton::clicked,
+        validation_status,
+        [validation_recorder,
+         screen_publisher,
+         screen_subscriber,
+         validation_button,
+         validation_status,
+         show_validation_result]() {
+            if (validation_recorder->active()) {
+                show_validation_result(validation_recorder->stop_and_write());
+                return;
+            }
+
+            const auto subscribe_snapshot = screen_subscriber->snapshot();
+            if (subscribe_snapshot.state ==
+                screen_share::media::LiveKitSubscribeState::Watching) {
+                validation_recorder->start(screen_share::desktop::ValidationRole::Viewer);
+            } else if (screen_publisher->snapshot().state ==
+                       screen_share::media::LiveKitPublishState::Publishing) {
+                validation_recorder->start(screen_share::desktop::ValidationRole::Host);
+            } else {
+                validation_status->setText(
+                    QStringLiteral("请先成功发布或加入观看，再开始验收记录。"));
+                return;
+            }
+
+            validation_button->setText(QStringLiteral("停止并保存验收记录"));
+            show_validation_result({});
+        });
 
     auto* remote_render_timer = new QTimer(central_widget);
     remote_render_timer->setInterval(8);
@@ -588,6 +664,7 @@ int main(int argc, char* argv[]) {
          host_button,
          publish_button,
          join_button,
+         record_validation,
          status]() {
             if (*capture_active_in_ui && !capture_session->running()) {
                 capture_session->stop();
@@ -605,6 +682,27 @@ int main(int argc, char* argv[]) {
 
             const auto subscribe_snapshot = screen_subscriber->snapshot();
             if (subscribe_snapshot.state != screen_share::media::LiveKitSubscribeState::Idle) {
+                pipeline_stats->set_count(
+                    screen_share::diagnostics::PipelineStage::Receive,
+                    subscribe_snapshot.stats_samples > 0U
+                        ? subscribe_snapshot.received_frames
+                        : subscribe_snapshot.callback_frames);
+                pipeline_stats->set_count(
+                    screen_share::diagnostics::PipelineStage::Decode,
+                    subscribe_snapshot.stats_samples > 0U
+                        ? subscribe_snapshot.decoded_frames
+                        : subscribe_snapshot.callback_frames);
+                pipeline_stats->set_duration(
+                    screen_share::diagnostics::PipelineStage::Receive,
+                    subscribe_snapshot.total_receive_delay_nanoseconds,
+                    subscribe_snapshot.receive_delay_samples);
+                pipeline_stats->set_duration(
+                    screen_share::diagnostics::PipelineStage::Decode,
+                    subscribe_snapshot.total_decode_duration_nanoseconds,
+                    subscribe_snapshot.decoded_frames);
+                const auto viewer_pipeline = pipeline_stats->snapshot();
+                const auto viewer_rates =
+                    pipeline_rate->sample(viewer_pipeline, steady_timestamp_100ns());
                 switch (subscribe_snapshot.state) {
                     case screen_share::media::LiveKitSubscribeState::Idle:
                         break;
@@ -612,27 +710,6 @@ int main(int argc, char* argv[]) {
                         status->setText(QStringLiteral("正在连接 LiveKit 观看房间…"));
                         break;
                     case screen_share::media::LiveKitSubscribeState::Watching: {
-                        pipeline_stats->set_count(
-                            screen_share::diagnostics::PipelineStage::Receive,
-                            subscribe_snapshot.stats_samples > 0U
-                                ? subscribe_snapshot.received_frames
-                                : subscribe_snapshot.callback_frames);
-                        pipeline_stats->set_count(
-                            screen_share::diagnostics::PipelineStage::Decode,
-                            subscribe_snapshot.stats_samples > 0U
-                                ? subscribe_snapshot.decoded_frames
-                                : subscribe_snapshot.callback_frames);
-                        pipeline_stats->set_duration(
-                            screen_share::diagnostics::PipelineStage::Receive,
-                            subscribe_snapshot.total_receive_delay_nanoseconds,
-                            subscribe_snapshot.receive_delay_samples);
-                        pipeline_stats->set_duration(
-                            screen_share::diagnostics::PipelineStage::Decode,
-                            subscribe_snapshot.total_decode_duration_nanoseconds,
-                            subscribe_snapshot.decoded_frames);
-                        const auto viewer_pipeline = pipeline_stats->snapshot();
-                        const auto viewer_rates = pipeline_rate->sample(
-                            viewer_pipeline, steady_timestamp_100ns());
                         status->setText(
                             QStringLiteral("软件内观看 %1×%2 · 六段 fps C/E/S/Rx/D/R %3/%4/%5/%6/%7/%8 · decode %9 ms · render %10 ms · %11 Mbps · 丢包 %12% · 队列丢弃 %13")
                                 .arg(subscribe_snapshot.width)
@@ -692,6 +769,19 @@ int main(int argc, char* argv[]) {
                         join_button->setText(QStringLiteral("重新加入"));
                         break;
                 }
+                screen_share::desktop::ValidationSampleInput validation_sample;
+                validation_sample.rates = viewer_rates;
+                validation_sample.pipeline = viewer_pipeline;
+                validation_sample.width = subscribe_snapshot.width;
+                validation_sample.height = subscribe_snapshot.height;
+                validation_sample.bitrate_bps = subscribe_snapshot.bitrate_bps;
+                validation_sample.packet_loss_ratio = subscribe_snapshot.packet_loss_ratio;
+                validation_sample.dropped_frames = subscribe_snapshot.dropped_frames;
+                validation_sample.media_active =
+                    subscribe_snapshot.state ==
+                    screen_share::media::LiveKitSubscribeState::Watching;
+                record_validation(screen_share::desktop::ValidationRole::Viewer,
+                                  validation_sample);
                 return;
             }
 
@@ -796,6 +886,17 @@ int main(int argc, char* argv[]) {
                                 .arg(publish_status)
                                 .arg(static_cast<qulonglong>(
                                     readback_failures->load(std::memory_order_relaxed))));
+            screen_share::desktop::ValidationSampleInput validation_sample;
+            validation_sample.rates = pipeline_rates;
+            validation_sample.pipeline = pipeline_snapshot;
+            validation_sample.width = width;
+            validation_sample.height = height;
+            validation_sample.bitrate_bps = publish_snapshot.bitrate_bps;
+            validation_sample.packet_loss_ratio = publish_snapshot.packet_loss_ratio;
+            validation_sample.dropped_frames = publish_snapshot.dropped_frames;
+            validation_sample.media_active =
+                publish_snapshot.state == screen_share::media::LiveKitPublishState::Publishing;
+            record_validation(screen_share::desktop::ValidationRole::Host, validation_sample);
         });
     frame_status_timer->start();
 
@@ -807,6 +908,8 @@ int main(int argc, char* argv[]) {
     layout->addWidget(publish_group);
     layout->addWidget(host_button);
     layout->addWidget(join_button);
+    layout->addWidget(validation_button);
+    layout->addWidget(validation_status);
     layout->addStretch();
     layout->addWidget(status);
 
@@ -818,6 +921,9 @@ int main(int argc, char* argv[]) {
     capture_session->stop();
     screen_publisher->stop();
     screen_subscriber->stop();
+    if (validation_recorder->active()) {
+        static_cast<void>(validation_recorder->stop_and_write());
+    }
     frame_reader->reset();
     preview_renderer->reset();
     return exit_code;

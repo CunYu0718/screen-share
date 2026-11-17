@@ -2,7 +2,7 @@
 
 面向 Windows 的高性能实时屏幕共享软件。发起者和观看者使用同一款桌面客户端；每个房间最多包含 1 名发起者和 20 名观看者，目标支持 1920×1080@60fps 与 2560×1440@60fps。
 
-> 项目状态：M0 工程基线已通过 CI，M1 已完成捕获、LiveKit 发布/订阅、软件内渲染，以及六段媒体 fps/耗时诊断基线。当前仓库尚未发布可运行版本，请勿用于生产环境。
+> 项目状态：M0 工程基线已通过 CI，M1 已完成捕获、LiveKit 发布/订阅、软件内渲染、六段媒体诊断，以及 30 分钟实机验收报告工具。Intel/NVIDIA/AMD 的真实硬件矩阵尚未执行；当前仓库尚未发布可运行版本，请勿用于生产环境。
 
 ## 核心目标
 
@@ -40,6 +40,7 @@
 - [系统架构](docs/architecture.md)
 - [开发顺序与里程碑](docs/development-order.md)
 - [性能与质量闸门](docs/quality-gates.md)
+- [M1 实机媒体验收手册](docs/hardware-validation.md)
 - [依赖基线](docs/dependencies.md)
 - [可观测性与错误契约](docs/observability.md)
 - [本地基础设施](infra/README.md)
@@ -73,6 +74,8 @@ cmake --build --preset desktop
 当前 M1 界面需要手工输入 LiveKit WebSocket URL 和当前角色的短时令牌。观看端还需填写发起者的 participant identity，客户端将订阅其固定名称 `screen-share` 轨道。令牌签发与加入码将在 M2 接入会话 API；不要把令牌提交到仓库或日志。
 
 状态栏使用固定顺序 `C/E/S/Rx/D/R` 展示 capture、encode、send、receive、decode、render 六段实际 fps，并显示阶段平均耗时、WebRTC 码率、丢包和队列丢帧。指标是技术验证数据，不代表 QG-1 已通过。
+
+发布或观看稳定后，可在两端分别点击“开始 30 分钟验收记录”。客户端会把不含屏幕内容和凭证的端点 JSON 保存到“文档/ScreenShare/validation”；使用 `tools/qg1-evaluate.mjs` 合并两端报告和人工延迟/稳定性证据。完整步骤见[M1 实机媒体验收手册](docs/hardware-validation.md)。
 
 会话 API 开发命令：
 

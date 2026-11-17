@@ -1,6 +1,12 @@
 qt_add_executable(screen_share_desktop WIN32)
 
-target_sources(screen_share_desktop PRIVATE src/main.cpp)
+target_sources(
+    screen_share_desktop
+    PRIVATE
+        src/main.cpp
+        src/validation_report.cpp
+        src/validation_report.hpp
+)
 
 target_link_libraries(
     screen_share_desktop
@@ -12,6 +18,7 @@ target_link_libraries(
         ScreenShare::Diagnostics
         ScreenShare::MediaLiveKit
         ScreenShare::Renderer
+        Psapi
         screen_share_project_options
         screen_share_project_warnings
 )

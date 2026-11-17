@@ -10,7 +10,8 @@
   },
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present && npm run test:quality",
+    "test:quality": "node --test --test-isolation=none tools/qg1-evaluate.test.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present"
   }
 }

@@ -25,7 +25,7 @@ flowchart TD
 
 ## 3. 硬性开发顺序
 
-当前进度：M0 已完成，M1-01 至 M1-06 已实现；客户端可展示 capture/encode/send/receive/decode/render 六段 fps 与处理耗时，并采样 WebRTC 码率和丢包。下一个任务是 M1-07 在 Intel、NVIDIA、AMD 基准设备上执行 1080p60 与 1440p60 实机验证。双客户端链路和画质仍需通过 QG-1。
+当前进度：M0 已完成，M1-01 至 M1-06 已实现；M1-07/M1-08 的 30 分钟端点采样、脱敏 JSON 报告和双端 QG-1 合并判定工具已经就绪。下一步是在 Intel、NVIDIA、AMD 基准设备上实际执行 1080p60 与 1440p60 矩阵。未取得三类硬件的实测报告前，M1 和 QG-1 均不视为完成。
 
 ### M0：工程基线（第 1 周前半）
 
@@ -55,6 +55,8 @@ flowchart TD
 6. `M1-06` 采集 capture/encode/send/receive/decode/render 六段指标。
 7. `M1-07` 在 Intel、NVIDIA、AMD 基准设备上分别跑 1080p60 和 1440p60。
 8. `M1-08` 连续运行 30 分钟并检查帧率、延迟、内存和设备丢失恢复。
+
+M1-07/M1-08 的执行方法见 [M1 实机媒体验收手册](hardware-validation.md)。端点报告只能证明本机观测，必须合并 host/viewer 报告、实测 P95 延迟和人工稳定性复核后才能判定 QG-1。
 
 退出条件：满足 [QG-1](quality-gates.md#qg-1单发单收-2k60)。若普通原始帧路径失败，立即切换预编码输入方案并重新验证，不进入 M2。
 
