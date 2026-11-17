@@ -15,6 +15,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  desktop-ui:
+    name: Windows Qt desktop
+    runs-on: windows-2022
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Install Qt 6.12.0
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4.5.0
+        with:
+          version: 6.12.0
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          cache: true
+
+      - name: Configure
+        run: cmake --preset ci-windows-desktop
+
+      - name: Build
+        run: cmake --build --preset ci-windows-desktop --parallel
+
+      - name: Test
+        run: ctest --preset ci-windows-desktop
+
   node-api:
     name: Node session API
     runs-on: ubuntu-24.04

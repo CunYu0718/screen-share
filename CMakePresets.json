@@ -39,6 +39,14 @@
       "inherits": "base",
       "generator": "Visual Studio 17 2022",
       "architecture": "x64"
+    },
+    {
+      "name": "ci-windows-desktop",
+      "displayName": "Windows Qt desktop CI",
+      "inherits": "ci-windows",
+      "cacheVariables": {
+        "SCREEN_SHARE_BUILD_DESKTOP": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -57,6 +65,12 @@
       "configurePreset": "ci-windows",
       "configuration": "Debug",
       "jobs": 4
+    },
+    {
+      "name": "ci-windows-desktop",
+      "configurePreset": "ci-windows-desktop",
+      "configuration": "Debug",
+      "jobs": 4
     }
   ],
   "testPresets": [
@@ -70,6 +84,14 @@
     {
       "name": "ci-windows",
       "configurePreset": "ci-windows",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci-windows-desktop",
+      "configurePreset": "ci-windows-desktop",
       "configuration": "Debug",
       "output": {
         "outputOnFailure": true

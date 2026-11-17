@@ -20,6 +20,7 @@
 | Redis | 8.10.3-alpine | 临时状态与 LiveKit | Compose 已锁定 |
 | actions/checkout | v7.0.1 | GitHub Actions checkout | CI 已锁定 |
 | actions/setup-node | v7.1.0 | GitHub Actions Node 环境 | CI 已锁定 |
+| jurplel/install-qt-action | v4.5.0 (`b344308`) | GitHub Actions Qt 环境 | CI 使用不可变 SHA |
 
 ## 2. 版本策略
 
@@ -42,3 +43,4 @@
 - [LiveKit Server v1.13.11](https://github.com/livekit/livekit/releases/tag/v1.13.11)
 - [coturn 4.19.1-r0](https://github.com/coturn/coturn/releases/tag/docker/4.19.1-r0)
 - [Redis 8.10.3](https://github.com/redis/redis/releases/tag/8.10.3)
+- [install-qt-action v4.5.0](https://github.com/jurplel/install-qt-action/releases/tag/v4.5.0)
