@@ -1,6 +1,7 @@
 #include "screen_share/media/d3d11_bgra_frame_reader.hpp"
 
 #include <d3d11.h>
+#include <d3d11_4.h>
 #include <dxgi.h>
 #include <wrl/client.h>
 
