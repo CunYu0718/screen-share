@@ -41,6 +41,7 @@
 - [开发顺序与里程碑](docs/development-order.md)
 - [性能与质量闸门](docs/quality-gates.md)
 - [依赖基线](docs/dependencies.md)
+- [可观测性与错误契约](docs/observability.md)
 - [ADR-0001：原生 Windows 客户端与 SFU](docs/adr/0001-native-windows-client-and-sfu.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全策略](SECURITY.md)
@@ -67,6 +68,18 @@ cmake --build --preset desktop
 ```
 
 桌面目标要求 Qt 6.12.0。完整工具链和版本策略见[依赖基线](docs/dependencies.md)。
+
+会话 API 开发命令：
+
+```powershell
+npm install
+npm run typecheck
+npm run build
+npm test
+npm run dev --workspace @screen-share/session-api
+```
+
+服务启动后提供 `GET /healthz` 和 `GET /v1/capabilities`。房间创建、加入和令牌签发将在 M2 实现。
 
 ## 许可证
 

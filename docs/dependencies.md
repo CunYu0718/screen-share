@@ -12,7 +12,11 @@
 | Qt | 6.12.0 LTS | 桌面 UI | CMake 可选目标已接入 |
 | LiveKit C++ SDK | v1.13.1 | WebRTC 发布、订阅与帧接口 | M1 接入 |
 | Node.js | 24.x | 会话 API | M0 后半接入 |
+| Fastify | 5.12.8 | 会话 API HTTP 服务 | 已接入 |
+| TypeScript | 7.0.2 | 会话 API类型检查与构建 | 已接入 |
+| tsx | 4.23.15 | 本地 API 热重载 | 已接入 |
 | actions/checkout | v7.0.1 | GitHub Actions checkout | CI 已锁定 |
+| actions/setup-node | v7.1.0 | GitHub Actions Node 环境 | CI 已锁定 |
 
 ## 2. 版本策略
 
@@ -24,7 +28,7 @@
 
 ## 3. 当前本机状态
 
-当前开发机尚未安装 CMake、MSVC、Qt 和 Docker，因此核心工程首先由 Windows GitHub Actions 验证。本机工具链安装完成前，不宣称桌面目标已在本机验证。
+当前开发机已安装 Node.js 24，但尚未安装 CMake、MSVC、Qt 和 Docker。因此会话 API 在本机与 CI 双重验证，C++ 核心由 Windows GitHub Actions 验证；本机工具链安装完成前，不宣称桌面目标已在本机验证。
 
 ## 4. 官方依据
 
