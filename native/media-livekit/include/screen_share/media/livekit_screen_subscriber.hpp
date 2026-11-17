@@ -39,10 +39,22 @@ enum class LiveKitSubscribeError : std::uint8_t {
 struct LiveKitSubscribeSnapshot {
     LiveKitSubscribeState state{LiveKitSubscribeState::Idle};
     LiveKitSubscribeError error{LiveKitSubscribeError::None};
-    std::uint64_t decoded_frames{0};
+    std::uint64_t callback_frames{0};
     std::uint64_t delivered_frames{0};
     std::uint64_t dropped_frames{0};
     std::uint64_t conversion_failures{0};
+    std::uint64_t received_frames{0};
+    std::uint64_t decoded_frames{0};
+    std::uint64_t packets_received{0};
+    std::uint64_t bytes_received{0};
+    std::uint64_t bitrate_bps{0};
+    std::uint64_t total_receive_delay_nanoseconds{0};
+    std::uint64_t receive_delay_samples{0};
+    std::uint64_t total_decode_duration_nanoseconds{0};
+    std::uint64_t stats_samples{0};
+    std::uint64_t stats_failures{0};
+    double reported_frames_per_second{0.0};
+    double packet_loss_ratio{0.0};
     std::uint32_t width{0};
     std::uint32_t height{0};
 };

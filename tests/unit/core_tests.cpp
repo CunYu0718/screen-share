@@ -47,15 +47,37 @@ int main() {
     stats.record(PipelineStage::Capture, 120);
     stats.record(PipelineStage::Encode, 118);
     stats.record(PipelineStage::Render, 110);
+    stats.record_duration(PipelineStage::Render, 2'000'000);
+    stats.record_duration(PipelineStage::Render, 4'000'000);
+    stats.set_duration(PipelineStage::Encode, 118'000'000, 118);
 
     const auto snapshot = stats.snapshot();
     check(snapshot.count(PipelineStage::Capture) == 120, "capture frame count");
     check(snapshot.count(PipelineStage::Encode) == 118, "encode frame count");
     check(snapshot.count(PipelineStage::Render) == 110, "render frame count");
+    check(snapshot.average_duration_milliseconds(PipelineStage::Render) == 3.0,
+          "render average duration");
+    check(snapshot.average_duration_milliseconds(PipelineStage::Encode) == 1.0,
+          "authoritative encode duration");
     check(screen_share::diagnostics::to_string(PipelineStage::Decode) == "decode", "stage name");
 
     stats.reset();
     check(stats.snapshot().count(PipelineStage::Capture) == 0, "counter reset");
+    check(stats.snapshot().average_duration_milliseconds(PipelineStage::Render) == 0.0,
+          "duration reset");
+
+    FramePipelineStats rate_stats;
+    screen_share::diagnostics::FramePipelineRateEstimator pipeline_rate;
+    rate_stats.set_count(PipelineStage::Capture, 10);
+    check(pipeline_rate.sample(rate_stats.snapshot(), 10'000'000).rate(
+              PipelineStage::Capture) == 0.0,
+          "first pipeline sample establishes a baseline");
+    rate_stats.set_count(PipelineStage::Capture, 70);
+    rate_stats.set_count(PipelineStage::Encode, 55);
+    const auto rates = pipeline_rate.sample(rate_stats.snapshot(), 20'000'000);
+    check(rates.rate(PipelineStage::Capture) == 60.0, "capture pipeline rate");
+    check(rates.rate(PipelineStage::Encode) == 55.0, "encode pipeline rate");
+    pipeline_rate.reset();
 
     FrameRateEstimator frame_rate;
     frame_rate.record(0);

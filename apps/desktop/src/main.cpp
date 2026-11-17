@@ -27,6 +27,7 @@
 #include <winrt/base.h>
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -52,6 +53,11 @@ struct LatestFrameState {
     std::atomic<std::uint32_t> width{0};
     std::atomic<std::uint32_t> height{0};
 };
+
+[[nodiscard]] std::int64_t steady_timestamp_100ns() noexcept {
+    const auto elapsed = std::chrono::steady_clock::now().time_since_epoch();
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count() / 100;
+}
 
 class D3DPreviewWidget final : public QWidget {
 public:
@@ -264,7 +270,7 @@ int main(int argc, char* argv[]) {
     publish_layout->addRow(QStringLiteral("发起者身份"), publisher_identity);
     publish_layout->addRow(publish_button);
 
-    auto* status = new QLabel(QStringLiteral("M1-04：请选择屏幕或窗口"), central_widget);
+    auto* status = new QLabel(QStringLiteral("M1-06：请选择屏幕或窗口"), central_widget);
     status->setWordWrap(true);
     auto* host_button = new QPushButton(QStringLiteral("开始捕获"), central_widget);
     auto* join_button = new QPushButton(QStringLiteral("加入观看"), central_widget);
@@ -273,6 +279,8 @@ int main(int argc, char* argv[]) {
     const auto frame_rate = std::make_shared<screen_share::diagnostics::FrameRateEstimator>();
     const auto pipeline_stats =
         std::make_shared<screen_share::diagnostics::FramePipelineStats>();
+    const auto pipeline_rate =
+        std::make_shared<screen_share::diagnostics::FramePipelineRateEstimator>();
     const auto preview_handle = reinterpret_cast<std::uintptr_t>(
         reinterpret_cast<void*>(preview_widget->winId()));
     const auto preview_renderer =
@@ -321,6 +329,7 @@ int main(int argc, char* argv[]) {
          latest_frame,
          frame_rate,
          pipeline_stats,
+         pipeline_rate,
          preview_renderer,
          frame_reader,
          screen_publisher,
@@ -363,6 +372,7 @@ int main(int argc, char* argv[]) {
             latest_frame->height.store(0, std::memory_order_relaxed);
             frame_rate->reset();
             pipeline_stats->reset();
+            pipeline_rate->reset();
             screen_subscriber->stop();
             preview_renderer->reset();
             screen_publisher->stop();
@@ -380,14 +390,22 @@ int main(int argc, char* argv[]) {
                  screen_publisher,
                  readback_failures](
                     const screen_share::capture::D3D11CaptureFrameView& frame) {
+                    const auto capture_started = std::chrono::steady_clock::now();
                     latest_frame->width.store(frame.width, std::memory_order_relaxed);
                     latest_frame->height.store(frame.height, std::memory_order_relaxed);
                     frame_rate->record(frame.system_relative_time_100ns);
                     pipeline_stats->record(screen_share::diagnostics::PipelineStage::Capture);
+                    const auto render_started = std::chrono::steady_clock::now();
                     if (preview_renderer->render(frame) ==
                         screen_share::renderer::PreviewRenderResult::Rendered) {
                         pipeline_stats->record(screen_share::diagnostics::PipelineStage::Render);
                     }
+                    pipeline_stats->record_duration(
+                        screen_share::diagnostics::PipelineStage::Render,
+                        static_cast<std::uint64_t>(
+                            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                std::chrono::steady_clock::now() - render_started)
+                                .count()));
 
                     if (screen_publisher->snapshot().state ==
                         screen_share::media::LiveKitPublishState::Publishing) {
@@ -399,6 +417,12 @@ int main(int argc, char* argv[]) {
                             readback_failures->fetch_add(1, std::memory_order_relaxed);
                         }
                     }
+                    pipeline_stats->record_duration(
+                        screen_share::diagnostics::PipelineStage::Capture,
+                        static_cast<std::uint64_t>(
+                            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                std::chrono::steady_clock::now() - capture_started)
+                                .count()));
                 });
             status->setText(capture_start_message(result));
 
@@ -454,6 +478,7 @@ int main(int argc, char* argv[]) {
         status,
         [capture_session,
          pipeline_stats,
+         pipeline_rate,
          preview_renderer,
          frame_reader,
          screen_publisher,
@@ -483,6 +508,7 @@ int main(int argc, char* argv[]) {
             frame_reader->reset();
             preview_renderer->reset();
             pipeline_stats->reset();
+            pipeline_rate->reset();
             *capture_active_in_ui = false;
             source_combo->setEnabled(source_combo->count() > 0);
             refresh_button->setEnabled(true);
@@ -515,8 +541,6 @@ int main(int argc, char* argv[]) {
             if (!screen_subscriber->take_latest(frame)) {
                 return;
             }
-            pipeline_stats->record(screen_share::diagnostics::PipelineStage::Receive);
-            pipeline_stats->record(screen_share::diagnostics::PipelineStage::Decode);
             if (frame.width > std::numeric_limits<std::uint32_t>::max() / 4U) {
                 return;
             }
@@ -528,10 +552,17 @@ int main(int argc, char* argv[]) {
                 .height = frame.height,
                 .row_pitch = frame.width * 4U,
             };
+            const auto render_started = std::chrono::steady_clock::now();
             if (preview_renderer->render(frame_view) ==
                 screen_share::renderer::PreviewRenderResult::Rendered) {
                 pipeline_stats->record(screen_share::diagnostics::PipelineStage::Render);
             }
+            pipeline_stats->record_duration(
+                screen_share::diagnostics::PipelineStage::Render,
+                static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now() - render_started)
+                        .count()));
         });
     remote_render_timer->start();
 
@@ -545,6 +576,7 @@ int main(int argc, char* argv[]) {
          latest_frame,
          frame_rate,
          pipeline_stats,
+         pipeline_rate,
          preview_renderer,
          frame_reader,
          screen_publisher,
@@ -573,7 +605,6 @@ int main(int argc, char* argv[]) {
 
             const auto subscribe_snapshot = screen_subscriber->snapshot();
             if (subscribe_snapshot.state != screen_share::media::LiveKitSubscribeState::Idle) {
-                const auto pipeline_snapshot = pipeline_stats->snapshot();
                 switch (subscribe_snapshot.state) {
                     case screen_share::media::LiveKitSubscribeState::Idle:
                         break;
@@ -581,16 +612,79 @@ int main(int argc, char* argv[]) {
                         status->setText(QStringLiteral("正在连接 LiveKit 观看房间…"));
                         break;
                     case screen_share::media::LiveKitSubscribeState::Watching:
+                        pipeline_stats->set_count(
+                            screen_share::diagnostics::PipelineStage::Receive,
+                            subscribe_snapshot.stats_samples > 0U
+                                ? subscribe_snapshot.received_frames
+                                : subscribe_snapshot.callback_frames);
+                        pipeline_stats->set_count(
+                            screen_share::diagnostics::PipelineStage::Decode,
+                            subscribe_snapshot.stats_samples > 0U
+                                ? subscribe_snapshot.decoded_frames
+                                : subscribe_snapshot.callback_frames);
+                        pipeline_stats->set_duration(
+                            screen_share::diagnostics::PipelineStage::Receive,
+                            subscribe_snapshot.total_receive_delay_nanoseconds,
+                            subscribe_snapshot.receive_delay_samples);
+                        pipeline_stats->set_duration(
+                            screen_share::diagnostics::PipelineStage::Decode,
+                            subscribe_snapshot.total_decode_duration_nanoseconds,
+                            subscribe_snapshot.decoded_frames);
+                        const auto viewer_pipeline = pipeline_stats->snapshot();
+                        const auto viewer_rates = pipeline_rate->sample(
+                            viewer_pipeline, steady_timestamp_100ns());
                         status->setText(
-                            QStringLiteral("软件内观看 %1×%2 · 解码 %3 帧 · 渲染 %4 帧 · 丢弃 %5 帧 · 转换失败 %6")
+                            QStringLiteral("软件内观看 %1×%2 · 六段 fps C/E/S/Rx/D/R %3/%4/%5/%6/%7/%8 · decode %9 ms · render %10 ms · %11 Mbps · 丢包 %12% · 队列丢弃 %13")
                                 .arg(subscribe_snapshot.width)
                                 .arg(subscribe_snapshot.height)
-                                .arg(static_cast<qulonglong>(subscribe_snapshot.decoded_frames))
-                                .arg(static_cast<qulonglong>(pipeline_snapshot.count(
-                                    screen_share::diagnostics::PipelineStage::Render)))
-                                .arg(static_cast<qulonglong>(subscribe_snapshot.dropped_frames))
+                                .arg(viewer_rates.rate(
+                                         screen_share::diagnostics::PipelineStage::Capture),
+                                     0,
+                                     'f',
+                                     1)
+                                .arg(viewer_rates.rate(
+                                         screen_share::diagnostics::PipelineStage::Encode),
+                                     0,
+                                     'f',
+                                     1)
+                                .arg(viewer_rates.rate(
+                                         screen_share::diagnostics::PipelineStage::Send),
+                                     0,
+                                     'f',
+                                     1)
+                                .arg(viewer_rates.rate(
+                                         screen_share::diagnostics::PipelineStage::Receive),
+                                     0,
+                                     'f',
+                                     1)
+                                .arg(viewer_rates.rate(
+                                         screen_share::diagnostics::PipelineStage::Decode),
+                                     0,
+                                     'f',
+                                     1)
+                                .arg(viewer_rates.rate(
+                                         screen_share::diagnostics::PipelineStage::Render),
+                                     0,
+                                     'f',
+                                     1)
+                                .arg(viewer_pipeline.average_duration_milliseconds(
+                                         screen_share::diagnostics::PipelineStage::Decode),
+                                     0,
+                                     'f',
+                                     2)
+                                .arg(viewer_pipeline.average_duration_milliseconds(
+                                         screen_share::diagnostics::PipelineStage::Render),
+                                     0,
+                                     'f',
+                                     2)
+                                .arg(static_cast<double>(subscribe_snapshot.bitrate_bps) /
+                                         1'000'000.0,
+                                     0,
+                                     'f',
+                                     2)
+                                .arg(subscribe_snapshot.packet_loss_ratio * 100.0, 0, 'f', 2)
                                 .arg(static_cast<qulonglong>(
-                                    subscribe_snapshot.conversion_failures)));
+                                    subscribe_snapshot.dropped_frames));
                         break;
                     case screen_share::media::LiveKitSubscribeState::Failed:
                         status->setText(subscribe_error_message(subscribe_snapshot.error));
@@ -605,16 +699,30 @@ int main(int argc, char* argv[]) {
             }
 
             const auto rate_sample = frame_rate->sample();
-            const auto pipeline_snapshot = pipeline_stats->snapshot();
             if (rate_sample.total_frames == 0) {
                 return;
             }
 
             const auto width = latest_frame->width.load(std::memory_order_relaxed);
             const auto height = latest_frame->height.load(std::memory_order_relaxed);
-            const auto rendered_frames = pipeline_snapshot.count(
-                screen_share::diagnostics::PipelineStage::Render);
             const auto publish_snapshot = screen_publisher->snapshot();
+            pipeline_stats->set_count(
+                screen_share::diagnostics::PipelineStage::Encode,
+                publish_snapshot.encoded_frames);
+            pipeline_stats->set_count(
+                screen_share::diagnostics::PipelineStage::Send,
+                publish_snapshot.sent_frames);
+            pipeline_stats->set_duration(
+                screen_share::diagnostics::PipelineStage::Encode,
+                publish_snapshot.total_encode_duration_nanoseconds,
+                publish_snapshot.encoded_frames);
+            pipeline_stats->set_duration(
+                screen_share::diagnostics::PipelineStage::Send,
+                publish_snapshot.total_send_delay_nanoseconds,
+                publish_snapshot.packets_sent);
+            const auto pipeline_snapshot = pipeline_stats->snapshot();
+            const auto pipeline_rates =
+                pipeline_rate->sample(pipeline_snapshot, steady_timestamp_100ns());
             QString publish_status;
             switch (publish_snapshot.state) {
                 case screen_share::media::LiveKitPublishState::Idle:
@@ -635,12 +743,55 @@ int main(int argc, char* argv[]) {
                     publish_button->setText(QStringLiteral("重新发布"));
                     break;
             }
-            status->setText(QStringLiteral("正在捕获 %1×%2 · capture %3 fps · 预览 %4/%5 帧 · %6 · 读回失败 %7")
+            status->setText(QStringLiteral("正在捕获 %1×%2 · 六段 fps C/E/S/Rx/D/R %3/%4/%5/%6/%7/%8 · capture %9 ms · encode %10 ms · %11 Mbps · 丢包 %12% · %13 · 读回失败 %14")
                                 .arg(width)
                                 .arg(height)
-                                .arg(rate_sample.frames_per_second, 0, 'f', 1)
-                                .arg(static_cast<qulonglong>(rendered_frames))
-                                .arg(static_cast<qulonglong>(rate_sample.total_frames))
+                                .arg(pipeline_rates.rate(
+                                         screen_share::diagnostics::PipelineStage::Capture),
+                                     0,
+                                     'f',
+                                     1)
+                                .arg(pipeline_rates.rate(
+                                         screen_share::diagnostics::PipelineStage::Encode),
+                                     0,
+                                     'f',
+                                     1)
+                                .arg(pipeline_rates.rate(
+                                         screen_share::diagnostics::PipelineStage::Send),
+                                     0,
+                                     'f',
+                                     1)
+                                .arg(pipeline_rates.rate(
+                                         screen_share::diagnostics::PipelineStage::Receive),
+                                     0,
+                                     'f',
+                                     1)
+                                .arg(pipeline_rates.rate(
+                                         screen_share::diagnostics::PipelineStage::Decode),
+                                     0,
+                                     'f',
+                                     1)
+                                .arg(pipeline_rates.rate(
+                                         screen_share::diagnostics::PipelineStage::Render),
+                                     0,
+                                     'f',
+                                     1)
+                                .arg(pipeline_snapshot.average_duration_milliseconds(
+                                         screen_share::diagnostics::PipelineStage::Capture),
+                                     0,
+                                     'f',
+                                     2)
+                                .arg(pipeline_snapshot.average_duration_milliseconds(
+                                         screen_share::diagnostics::PipelineStage::Encode),
+                                     0,
+                                     'f',
+                                     2)
+                                .arg(static_cast<double>(publish_snapshot.bitrate_bps) /
+                                         1'000'000.0,
+                                     0,
+                                     'f',
+                                     2)
+                                .arg(publish_snapshot.packet_loss_ratio * 100.0, 0, 'f', 2)
                                 .arg(publish_status)
                                 .arg(static_cast<qulonglong>(
                                     readback_failures->load(std::memory_order_relaxed))));

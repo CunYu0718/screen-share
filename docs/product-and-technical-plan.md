@@ -381,7 +381,7 @@ screen_share/
 - [x] 实现 Windows.Graphics.Capture 屏幕和窗口 D3D11 帧捕获基线。
 - [x] 建立 D3D11 本地预览与 capture fps 统计基线。
 - [x] 实现屏幕轨道发布、BGRA 接收和软件内 D3D11 渲染路径。
-- [ ] 输出 capture/encode/send/receive/decode/render 六段耗时和 fps。
+- [x] 输出 capture/encode/send/receive/decode/render 六段耗时和 fps。
 - [ ] 验证 1080p60 与 1440p60 各 30 分钟。
 - [ ] 在 Intel、NVIDIA、AMD 三类 GPU 上记录结果。
 - [x] 部署 LiveKit、coturn、Redis 和最小会话 API 基线。

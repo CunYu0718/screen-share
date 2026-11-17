@@ -19,6 +19,17 @@
 
 `stage` 只能使用固定值，禁止把会话 ID、设备 ID 或错误消息放入指标标签。
 
+### 2.1 M1 客户端实现
+
+- capture 与 render 的帧数和处理时间在本地代码边界记录。
+- encode/send 使用 LiveKit `outbound-rtp` 的 `framesEncoded`、`framesSent`、`totalEncodeTime` 和 `totalPacketSendDelay`。
+- receive/decode 使用 `inbound-rtp` 的 `framesReceived`、`framesDecoded`、`jitterBufferDelay` 和 `totalDecodeTime`。
+- 每秒异步请求一次 WebRTC stats；future 仅做零等待轮询，不阻塞捕获、发布或解码线程。
+- 码率由相邻 stats 样本的字节差计算；接收丢包由累计收包和丢包计算，发送丢包使用远端接收报告。
+- 桌面状态栏用固定顺序 `C/E/S/Rx/D/R` 展示六段 fps。尚未进行双客户端实机运行前，空缺阶段显示为 0。
+
+`totalPacketSendDelay` 是累计包发送延迟，因此 send 平均耗时的样本数使用 RTP 包数，而不是视频帧数。端到端延迟需要可验证的跨端时间标记，将在实机质量闸门中补齐，不能用 RTT 冒充。
+
 ## 3. 会话服务指标
 
 | 指标 | 类型 | 标签 | 说明 |

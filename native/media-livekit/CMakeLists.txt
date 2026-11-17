@@ -8,6 +8,7 @@ target_sources(
         src/livekit_screen_subscriber.cpp
         src/livekit_screen_publisher.cpp
         src/livekit_url.cpp
+        src/livekit_video_metrics.cpp
     PUBLIC
         FILE_SET HEADERS
         BASE_DIRS include
