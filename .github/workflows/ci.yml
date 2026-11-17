@@ -42,6 +42,51 @@ jobs:
       - name: Test
         run: ctest --preset ci-windows-desktop
 
+      - name: Package portable validation client
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        run: |
+          $binaryDirectory = Resolve-Path "build/ci-windows-desktop/apps/desktop/Release"
+          $packageDirectory = Join-Path $env:RUNNER_TEMP "ScreenShare-portable"
+          New-Item -ItemType Directory -Path $packageDirectory -Force | Out-Null
+
+          $executable = Join-Path $binaryDirectory "ScreenShare.exe"
+          Copy-Item -LiteralPath $executable -Destination $packageDirectory
+          Copy-Item -LiteralPath (Join-Path $binaryDirectory "livekit.dll") -Destination $packageDirectory
+          Copy-Item -LiteralPath (Join-Path $binaryDirectory "livekit_ffi.dll") -Destination $packageDirectory
+          Copy-Item -LiteralPath "LICENSE" -Destination $packageDirectory
+          Copy-Item -LiteralPath "packaging/VALIDATION-README.txt" -Destination $packageDirectory
+
+          & windeployqt --release --no-translations --no-opengl-sw --dir $packageDirectory (Join-Path $packageDirectory "ScreenShare.exe")
+          if ($LASTEXITCODE -ne 0) {
+            throw "windeployqt failed with exit code $LASTEXITCODE"
+          }
+
+          $requiredFiles = @(
+            "ScreenShare.exe",
+            "Qt6Core.dll",
+            "Qt6Gui.dll",
+            "Qt6Widgets.dll",
+            "livekit.dll",
+            "livekit_ffi.dll",
+            "platforms/qwindows.dll",
+            "VALIDATION-README.txt"
+          )
+          foreach ($relativePath in $requiredFiles) {
+            if (-not (Test-Path -LiteralPath (Join-Path $packageDirectory $relativePath))) {
+              throw "Portable package is missing $relativePath"
+            }
+          }
+
+      - name: Upload portable validation client
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: screen-share-windows-x64-${{ github.sha }}
+          path: ${{ runner.temp }}/ScreenShare-portable
+          if-no-files-found: error
+          retention-days: 14
+
   node-api:
     name: Node session API
     runs-on: ubuntu-24.04

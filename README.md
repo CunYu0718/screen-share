@@ -71,6 +71,8 @@ cmake --build --preset desktop
 
 桌面目标要求 Qt 6.10.3。配置时会下载锁定的 LiveKit C++ SDK v1.13.1 Windows x64 预编译包并校验 SHA-256；离线构建可通过 `SCREEN_SHARE_LIVEKIT_SDK_ROOT` 指向已解压的 SDK。完整工具链和版本策略见[依赖基线](docs/dependencies.md)。
 
+每次主分支 CI 成功后会生成保留 14 天的 `screen-share-windows-x64-<commit>` 便携验收包，包含 Release 客户端、Qt 和 LiveKit 运行库。该 artifact 未签名、只用于专用测试机上的 M1 实机验证，不是正式发布版。
+
 当前 M1 界面需要手工输入 LiveKit WebSocket URL 和当前角色的短时令牌。观看端还需填写发起者的 participant identity，客户端将订阅其固定名称 `screen-share` 轨道。令牌签发与加入码将在 M2 接入会话 API；不要把令牌提交到仓库或日志。
 
 状态栏使用固定顺序 `C/E/S/Rx/D/R` 展示 capture、encode、send、receive、decode、render 六段实际 fps，并显示阶段平均耗时、WebRTC 码率、丢包和队列丢帧。指标是技术验证数据，不代表 QG-1 已通过。

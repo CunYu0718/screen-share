@@ -71,7 +71,7 @@
     {
       "name": "ci-windows-desktop",
       "configurePreset": "ci-windows-desktop",
-      "configuration": "Debug",
+      "configuration": "Release",
       "jobs": 4
     }
   ],
@@ -94,7 +94,7 @@
     {
       "name": "ci-windows-desktop",
       "configurePreset": "ci-windows-desktop",
-      "configuration": "Debug",
+      "configuration": "Release",
       "output": {
         "outputOnFailure": true
       }
