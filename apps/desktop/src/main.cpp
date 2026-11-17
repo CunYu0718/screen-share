@@ -684,7 +684,7 @@ int main(int argc, char* argv[]) {
                                      2)
                                 .arg(subscribe_snapshot.packet_loss_ratio * 100.0, 0, 'f', 2)
                                 .arg(static_cast<qulonglong>(
-                                    subscribe_snapshot.dropped_frames));
+                                    subscribe_snapshot.dropped_frames)));
                         break;
                     case screen_share::media::LiveKitSubscribeState::Failed:
                         status->setText(subscribe_error_message(subscribe_snapshot.error));
