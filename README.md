@@ -68,7 +68,7 @@ cmake --preset desktop
 cmake --build --preset desktop
 ```
 
-桌面目标要求 Qt 6.11.3。完整工具链和版本策略见[依赖基线](docs/dependencies.md)。
+桌面目标要求 Qt 6.10.3。完整工具链和版本策略见[依赖基线](docs/dependencies.md)。
 
 会话 API 开发命令：
 
