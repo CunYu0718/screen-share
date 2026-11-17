@@ -10,3 +10,17 @@ target_link_libraries(
 )
 
 add_test(NAME screen_share_core_tests COMMAND screen_share_core_tests)
+
+if(TARGET ScreenShare::Capture)
+    add_executable(screen_share_capture_tests unit/capture_source_tests.cpp)
+
+    target_link_libraries(
+        screen_share_capture_tests
+        PRIVATE
+            ScreenShare::Capture
+            screen_share_project_options
+            screen_share_project_warnings
+    )
+
+    add_test(NAME screen_share_capture_tests COMMAND screen_share_capture_tests)
+endif()

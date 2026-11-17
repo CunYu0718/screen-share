@@ -375,7 +375,7 @@ screen_share/
 
 ## 10. 首个开发迭代任务
 
-- [ ] 初始化 C++20、Qt 6、CMake 和基础 CI。
+- [x] 初始化 C++20、Qt 6、CMake 和基础 CI。
 - [ ] 集成 LiveKit C++ SDK 并跑通本地房间。
 - [ ] 实现 Windows.Graphics.Capture 屏幕和窗口捕获。
 - [ ] 建立 D3D11 本地预览与帧时间统计。
@@ -383,7 +383,7 @@ screen_share/
 - [ ] 输出 capture/encode/send/receive/decode/render 六段耗时和 fps。
 - [ ] 验证 1080p60 与 1440p60 各 30 分钟。
 - [ ] 在 Intel、NVIDIA、AMD 三类 GPU 上记录结果。
-- [ ] 部署 LiveKit、coturn、Redis 和最小令牌服务。
+- [x] 部署 LiveKit、coturn、Redis 和最小会话 API 基线。
 - [ ] 编写 20 个无 UI 观看者的首个容量冒烟测试。
 
 ## 11. 决策记录

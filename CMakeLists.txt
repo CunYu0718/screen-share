@@ -26,7 +26,15 @@ screen_share_enable_warnings(screen_share_project_warnings)
 add_subdirectory(native/core)
 add_subdirectory(native/diagnostics)
 
+if(WIN32)
+    add_subdirectory(native/capture)
+endif()
+
 if(SCREEN_SHARE_BUILD_DESKTOP)
+    if(NOT WIN32)
+        message(FATAL_ERROR "The desktop client currently supports Windows only")
+    endif()
+
     find_package(Qt6 6.10.3 EXACT REQUIRED COMPONENTS Core Widgets)
     add_subdirectory(apps/desktop)
 endif()

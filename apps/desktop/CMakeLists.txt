@@ -7,6 +7,7 @@ target_link_libraries(
     PRIVATE
         Qt6::Core
         Qt6::Widgets
+        ScreenShare::Capture
         ScreenShare::Core
         ScreenShare::Diagnostics
         screen_share_project_options
