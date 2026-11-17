@@ -15,6 +15,9 @@
 | Fastify | 5.12.8 | 会话 API HTTP 服务 | 已接入 |
 | TypeScript | 7.0.2 | 会话 API类型检查与构建 | 已接入 |
 | tsx | 4.23.15 | 本地 API 热重载 | 已接入 |
+| LiveKit Server | v1.13.11 | 本地 SFU | Compose 已锁定 |
+| coturn | 4.19.1-r0 | 本地 TURN | Compose 已锁定 |
+| Redis | 8.10.3-alpine | 临时状态与 LiveKit | Compose 已锁定 |
 | actions/checkout | v7.0.1 | GitHub Actions checkout | CI 已锁定 |
 | actions/setup-node | v7.1.0 | GitHub Actions Node 环境 | CI 已锁定 |
 
@@ -36,3 +39,6 @@
 - [LiveKit C++ SDK v1.13.1](https://github.com/livekit/client-sdk-cpp/releases/tag/v1.13.1)
 - [CMake v4.5.0](https://github.com/Kitware/CMake/releases/tag/v4.5.0)
 - [actions/checkout v7.0.1](https://github.com/actions/checkout/releases/tag/v7.0.1)
+- [LiveKit Server v1.13.11](https://github.com/livekit/livekit/releases/tag/v1.13.11)
+- [coturn 4.19.1-r0](https://github.com/coturn/coturn/releases/tag/docker/4.19.1-r0)
+- [Redis 8.10.3](https://github.com/redis/redis/releases/tag/8.10.3)

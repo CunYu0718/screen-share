@@ -42,6 +42,13 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Validate development infrastructure
+        env:
+          LIVEKIT_API_KEY: ci-dev-key
+          LIVEKIT_API_SECRET: ci-dev-secret-at-least-32-characters
+          TURN_SHARED_SECRET: ci-turn-secret-at-least-32-characters
+        run: docker compose -f infra/compose.yaml config --quiet
+
   windows-core:
     name: Windows core
     runs-on: windows-2022

@@ -42,6 +42,7 @@
 - [性能与质量闸门](docs/quality-gates.md)
 - [依赖基线](docs/dependencies.md)
 - [可观测性与错误契约](docs/observability.md)
+- [本地基础设施](infra/README.md)
 - [ADR-0001：原生 Windows 客户端与 SFU](docs/adr/0001-native-windows-client-and-sfu.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全策略](SECURITY.md)

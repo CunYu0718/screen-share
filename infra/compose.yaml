@@ -1,0 +1,71 @@
+name: screen-share-dev
+
+services:
+  redis:
+    image: redis:8.10.3-alpine
+    command:
+      - redis-server
+      - --appendonly
+      - "no"
+      - --save
+      - ""
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 2s
+      timeout: 1s
+      retries: 15
+    networks:
+      - screen-share
+    restart: unless-stopped
+
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    command:
+      - --config
+      - /etc/livekit/livekit.yaml
+      - --bind
+      - 0.0.0.0
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:?Set LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET:?Set LIVEKIT_API_SECRET}"
+    volumes:
+      - ./livekit/livekit.yaml:/etc/livekit/livekit.yaml:ro
+    ports:
+      - "7880:7880/tcp"
+      - "7881:7881/tcp"
+      - "7882:7882/udp"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - screen-share
+    restart: unless-stopped
+
+  coturn:
+    image: coturn/coturn:4.19.1-r0
+    command:
+      - --listening-port=3478
+      - --min-port=49160
+      - --max-port=49200
+      - --realm=screen-share.local
+      - --fingerprint
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SHARED_SECRET:?Set TURN_SHARED_SECRET}
+      - --no-cli
+      - --no-multicast-peers
+      - --no-tls
+      - --no-dtls
+      - --log-file=stdout
+    ports:
+      - "3478:3478/tcp"
+      - "3478:3478/udp"
+      - "49160-49200:49160-49200/udp"
+    networks:
+      - screen-share
+    restart: unless-stopped
+
+networks:
+  screen-share:
+    driver: bridge
